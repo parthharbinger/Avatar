@@ -1,6 +1,6 @@
 # Real-Time Interactive AI Avatar — Backend Microservice & Frontend SDK
 
-> Production-grade, dual-engine interactive AI avatar platform supporting **Photorealistic WebRTC Live Video** (D-ID / HeyGen) and a **$0 Zero-Budget 2D Canvas Engine** (Edge-TTS + WordBoundary visemes), accompanied by a plug-and-play TypeScript SDK.
+> Production-grade, dual-engine interactive AI avatar platform supporting **Photorealistic WebRTC Live Video** (D-ID / HeyGen) and a **Lightweight 2D Neural Canvas Engine** (Edge-TTS + WordBoundary visemes), accompanied by a plug-and-play TypeScript SDK.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?style=flat&logo=python)](https://python.org)
@@ -14,7 +14,7 @@
 
 - **🎬 Dual Rendering Engines**:
   - **Photorealistic WebRTC Video Engine**: Streams live talking video avatars via D-ID / HeyGen over WebRTC with sub-450ms TTFF.
-  - **$0 Zero-Budget 2D Canvas Engine**: Synchronizes 24kHz HD neural speech (Edge-TTS) with multi-layer mouth visemes, breathing micro-motion, and natural blinking over WebSocket.
+  - **Lightweight 2D Neural Canvas Engine**: Synchronizes 24kHz HD neural speech (Edge-TTS) with multi-layer mouth visemes, breathing micro-motion, and natural blinking over WebSocket.
 - **🤖 Real-Time Conversational AI (Groq LLM)**: The avatar thinks and responds conversationally in `< 180ms` with intelligent dialog memory.
 - **🎙️ Voice-to-Voice Microphone Input**: Integrated Web Speech API and Groq Whisper ASR (`whisper-large-v3-turbo`).
 - **⚡ Frame-Accurate Lip-Sync**: Powered by Microsoft Speech `WordBoundary` metadata timestamps matching exact syllable durations.
@@ -92,7 +92,7 @@ uv run uvicorn app.main:app --reload --port 8000
 ### 4. Interactive Live Demo
 Navigate to:
 👉 **`http://localhost:8000/demo/`**
-- Test both **D-ID WebRTC Live Video** and **Zero-Budget 2D** modes.
+- Test both **D-ID WebRTC Live Video** and **Lightweight 2D Canvas** modes.
 - Toggle between **Emma** (Female) and **David** (Male).
 - Click the **🎙️ Microphone** to talk directly to the avatar.
 
@@ -110,7 +110,7 @@ import { createAvatarWidget } from "@avatar-sdk/client";
 createAvatarWidget({
   target: "#ai-concierge-slot",      // Any HTML element (or floating: true)
   serverUrl: "http://localhost:8000",
-  engine: "d-id",                    // "d-id" for photorealistic video, "canvas" for $0 mode
+  engine: "d-id",                    // "d-id" for photorealistic video, "canvas" for lightweight 2D mode
   avatar: "emma",                    // "emma" or "david"
   title: "Emma — AI Concierge",
   welcomeMessage: "Hello! How can I assist you today?",
@@ -168,12 +168,12 @@ Open **`http://localhost:5173/`** to view the travel booking portal embedding th
 
 | Architecture Mode | Compute / Infrastructure | TTS & ASR Cost | Video Stream / LLM Cost | Estimated Total Cost / Active Hour |
 |---|---|---|---|---|
-| **⚡ $0 Zero-Budget Engine** | Single 1-vCPU Container ($4/mo) | $0.00 (Edge-TTS) | $0.00 (Client Canvas + Groq Free Tier) | **$0.005 / hour** (negligible server compute) |
+| **⚡ Lightweight 2D Canvas Engine** | Single 1-vCPU Container ($4/mo) | $0.00 (Edge-TTS) | $0.00 (Client Canvas + Groq Free Tier) | **$0.005 / hour** (negligible server compute) |
 | **🎬 D-ID WebRTC Stream** | Single 1-vCPU Container ($4/mo) | Included in D-ID stream | ~$0.08 / min ($4.80 / streaming hour) | **~$4.80 / active hour** |
 | **🎬 HeyGen Streaming API** | Single 1-vCPU Container ($4/mo) | Included in HeyGen stream | ~$0.10 / min ($6.00 / streaming hour) | **~$6.00 / active hour** |
 | **🎙️ ElevenLabs + Canvas** | Single 1-vCPU Container ($4/mo) | $0.30 / 1,000 chars (~$1.80/hr) | $0.00 (Client Canvas) | **~$1.80 / active hour** |
 
-> **Conclusion**: The **$0 Zero-Budget Engine** enables unlimited free local testing and production deployment at near-zero operating expense, while the **D-ID WebRTC Engine** provides film-grade production streaming when premium visual fidelity is required.
+> **Conclusion**: The **Lightweight 2D Canvas Engine** enables high-efficiency local testing and self-hosted deployment at minimal operating cost, while the **D-ID WebRTC Engine** provides film-grade production streaming when photorealistic visual fidelity is required.
 
 ---
 

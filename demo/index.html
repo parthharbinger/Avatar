@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Real-Time Interactive AI Avatar — Live Conversational Demo</title>
-  <meta name="description" content="Production-ready real-time interactive AI avatar supporting voice input, LLM conversation, $0 Zero-Budget 2D streaming, and Photorealistic WebRTC video." />
+  <meta name="description" content="Production-ready real-time interactive AI avatar supporting voice input, LLM conversation, Lightweight 2D neural streaming, and Photorealistic WebRTC video." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -358,7 +358,7 @@
         </label>
         <select id="engine-select">
           <option value="d-id" selected>🎬 D-ID WebRTC Stream (Photorealistic Video)</option>
-          <option value="edge-tts">⚡ Zero-Budget 2D (Edge-TTS + HD Canvas)</option>
+          <option value="edge-tts">⚡ Lightweight 2D Canvas (Edge-TTS + HD Canvas)</option>
           <option value="heygen">🎬 HeyGen Interactive Avatar (Studio Video)</option>
         </select>
       </div>
@@ -813,7 +813,7 @@
     engineSelect.onchange = () => {
       const mode = engineSelect.value;
       if (mode === "edge-tts") {
-        engineBadge.textContent = "$0.00 / Zero-Budget";
+        engineBadge.textContent = "⚡ Lightweight 2D Canvas";
         engineBadge.style.color = "#34d399";
         renderer.show();
         videoEl.style.display = "none";

@@ -4,7 +4,7 @@
 
 This platform delivers a production-grade interactive talking AI avatar platform designed to satisfy the core requirements of **Assignment 02**:
 1. **Low-Latency Streaming Transport**: Sub-500ms time-to-first-frame (TTFF) streaming via WebRTC video and bidirectional WebSocket.
-2. **Dual-Engine Architecture**: Provides both a **Photorealistic WebRTC Video Engine** (D-ID / HeyGen) and a **$0 Zero-Budget 2D Canvas Engine** (Edge-TTS + WordBoundary metadata).
+2. **Dual-Engine Architecture**: Provides both a **Photorealistic WebRTC Video Engine** (D-ID / HeyGen) and a **Lightweight 2D Neural Canvas Engine** (Edge-TTS + WordBoundary metadata).
 3. **Conversational AI with Barge-In**: Real-time voice/text dialogue powered by Groq LLM with sub-50ms task cancellation interruptions.
 4. **Ergonomic TypeScript SDK (`@avatar-sdk/client`)**: Allows external developers to embed the avatar in **3 lines of code** with zero boilerplate.
 
@@ -14,15 +14,15 @@ This platform delivers a production-grade interactive talking AI avatar platform
 
 ### 2.1 Dual-Engine Rendering Strategy
 
-| Dimension | Mode A: Photorealistic WebRTC (D-ID / HeyGen) | Mode B: $0 Zero-Budget 2D Canvas Engine |
+| Dimension | Mode A: Photorealistic WebRTC (D-ID / HeyGen) | Mode B: Lightweight 2D Neural Canvas Engine |
 |---|---|---|
 | **Rendering Location** | Cloud Neural Video Renderer (Server-side) | Client-side HTML5 Canvas GPU / 2D Context |
 | **Visual Fidelity** | Film-grade photorealistic live video | High-DPI realistic canvas avatar with mouth physics |
-| **Operating Cost** | ~$0.08 / active minute | **$0.00 / month** (zero GPU / zero API fee) |
+| **Operating Cost** | ~$0.08 / active minute | High-efficiency / Self-hosted |
 | **Streaming Protocol** | WebRTC (SRTP/RTP video + audio tracks) | WebSocket (Binary base64 MP3 chunks + JSON visemes) |
 | **Latency (TTFF)** | ~380–460ms | **~240–310ms** |
 | **Bandwidth Demand** | ~500 KB/s – 1.5 MB/s (H.264 video stream) | **~32 KB/s** (24kHz HD neural audio only) |
-| **Best For** | High-touch sales, broadcast, production video | Ultra-low bandwidth, high-concurrency, zero-budget apps |
+| **Best For** | High-touch sales, broadcast, production video | Ultra-low bandwidth, high-concurrency, self-hosted deployments |
 
 ---
 
@@ -79,7 +79,7 @@ Mid-sentence interruption is handled natively:
 
 ---
 
-### 3.2 Zero-Budget WebSocket Streaming Architecture
+### 3.2 Lightweight 2D WebSocket Streaming Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
