@@ -105,12 +105,12 @@ class WebRTCSpeakRequest(BaseModel):
     response_model=WebRTCOfferResponse,
     summary="Create WebRTC Stream Offer (D-ID / HeyGen)",
 )
-async def create_webrtc_offer(session_id: str, avatar_id: Optional[str] = None):
+async def create_webrtc_offer(session_id: str, avatar_id: Optional[str] = None, provider: Optional[str] = None):
     """
     Initialize WebRTC streaming session with configured provider (D-ID or HeyGen).
     """
-    provider = get_avatar_provider()
-    if not provider:
+    provider_adapter = get_avatar_provider(provider)
+    if not provider_adapter:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No WebRTC avatar provider configured in .env (AVATAR_PROVIDER is set to edge-tts/canvas).",
@@ -125,7 +125,7 @@ async def create_webrtc_offer(session_id: str, avatar_id: Optional[str] = None):
             except Exception:
                 pass
 
-        data = await provider.create_stream(session_id=session_id, avatar_id=effective_avatar_id)
+        data = await provider_adapter.create_stream(session_id=session_id, avatar_id=effective_avatar_id)
         return WebRTCOfferResponse(**data)
     except Exception as e:
         logger.error("WebRTC offer creation failed", extra={"error": str(e)})
@@ -136,16 +136,16 @@ async def create_webrtc_offer(session_id: str, avatar_id: Optional[str] = None):
     "/sessions/{session_id}/webrtc/answer",
     summary="Submit WebRTC SDP Answer",
 )
-async def submit_webrtc_answer(session_id: str, body: WebRTCAnswerRequest):
+async def submit_webrtc_answer(session_id: str, body: WebRTCAnswerRequest, provider: Optional[str] = None):
     """
     Submit client's SDP answer to start live WebRTC video stream.
     """
-    provider = get_avatar_provider()
-    if not provider:
+    provider_adapter = get_avatar_provider(provider)
+    if not provider_adapter:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No WebRTC provider configured.")
 
     try:
-        await provider.start_stream(
+        await provider_adapter.start_stream(
             stream_id=body.stream_id,
             answer_sdp=body.answer,
             session_id=body.provider_session_id or session_id,
@@ -160,13 +160,13 @@ async def submit_webrtc_answer(session_id: str, body: WebRTCAnswerRequest):
     "/sessions/{session_id}/webrtc/ice",
     summary="Submit WebRTC ICE Candidate",
 )
-async def submit_webrtc_ice(session_id: str, body: WebRTCIceRequest):
-    provider = get_avatar_provider()
-    if not provider:
+async def submit_webrtc_ice(session_id: str, body: WebRTCIceRequest, provider: Optional[str] = None):
+    provider_adapter = get_avatar_provider(provider)
+    if not provider_adapter:
         return {"status": "ignored"}
 
     try:
-        await provider.submit_ice_candidate(
+        await provider_adapter.submit_ice_candidate(
             stream_id=body.stream_id,
             candidate=body.candidate,
             session_id=body.provider_session_id or session_id,
@@ -181,13 +181,13 @@ async def submit_webrtc_ice(session_id: str, body: WebRTCIceRequest):
     "/sessions/{session_id}/webrtc/speak",
     summary="Make WebRTC Avatar Speak",
 )
-async def webrtc_speak(session_id: str, body: WebRTCSpeakRequest):
-    provider = get_avatar_provider()
-    if not provider:
+async def webrtc_speak(session_id: str, body: WebRTCSpeakRequest, provider: Optional[str] = None):
+    provider_adapter = get_avatar_provider(provider)
+    if not provider_adapter:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No WebRTC provider configured.")
 
     try:
-        await provider.speak(
+        await provider_adapter.speak(
             stream_id=body.stream_id,
             text=body.text,
             voice=body.voice,

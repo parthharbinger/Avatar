@@ -47,6 +47,11 @@ class HeyGenAvatarProvider(BaseAvatarProvider):
                 if resp.status not in (200, 201):
                     err_text = await resp.text()
                     logger.error("HeyGen create stream failed", extra={"status": resp.status, "error": err_text})
+                    if resp.status in (404, 403, 401):
+                        raise RuntimeError(
+                            "HeyGen Interactive WebRTC Streaming API requires an active Enterprise / Streaming Avatar plan on your HeyGen account. "
+                            "Please use the 'D-ID WebRTC Stream' engine (which is fully active with your D-ID key) or the 'Lightweight 2D Canvas' engine."
+                        )
                     raise RuntimeError(f"HeyGen API error: {resp.status} - {err_text}")
 
                 res_json = await resp.json()

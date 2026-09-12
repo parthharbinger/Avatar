@@ -968,14 +968,14 @@
 
         } else {
           // ── WebRTC 3rd-Party Video Mode (D-ID / HeyGen) ──
-          setStatus(`Initializing WebRTC stream (${currentAvatarId.toUpperCase()})...`, "");
+          setStatus(`Initializing WebRTC stream (${engine.toUpperCase()} - ${currentAvatarId.toUpperCase()})...`, "");
           
-          const offerResp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/offer?avatar_id=${currentAvatarId}`, {
+          const offerResp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/offer?avatar_id=${currentAvatarId}&provider=${engine}`, {
             method: "POST"
           });
           if (!offerResp.ok) {
             const err = await offerResp.json();
-            throw new Error(err.detail || "WebRTC offer failed. Ensure API key is in .env");
+            throw new Error(err.detail || `${engine.toUpperCase()} offer failed. Ensure API key is in .env`);
           }
 
           const offerData = await offerResp.json();
@@ -1001,7 +1001,7 @@
 
           peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
-              fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/ice`, {
+              fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/ice?provider=${engine}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -1025,7 +1025,7 @@
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
 
-          await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/answer`, {
+          await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/answer?provider=${engine}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1092,9 +1092,9 @@
         socket.send(JSON.stringify({ action: "speak", text: textToSpeak, voice }));
         setStatus("Speaking...", "speaking");
       } else if (activeStreamId) {
-        setStatus("Speaking (WebRTC Live Stream)...", "speaking");
+        setStatus(`Speaking (${engine.toUpperCase()} Live Stream)...`, "speaking");
         try {
-          const resp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/speak`, {
+          const resp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/speak?provider=${engine}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

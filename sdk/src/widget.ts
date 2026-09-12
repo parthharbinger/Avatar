@@ -108,9 +108,10 @@ export class AvatarWidget {
       const sessData = await sessResp.json();
       this.activeSessionId = sessData.session_id;
 
-      // 2. Fetch WebRTC Offer from D-ID backend adapter
+      // 2. Fetch WebRTC Offer from backend adapter (D-ID / HeyGen)
+      const provider = this.options.engine;
       const offerResp = await fetch(
-        `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/offer?avatar_id=${this.options.avatar}`,
+        `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/offer?avatar_id=${this.options.avatar}&provider=${provider}`,
         { method: "POST" }
       );
       if (!offerResp.ok) {
@@ -138,7 +139,7 @@ export class AvatarWidget {
 
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-          fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/ice`, {
+          fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/ice?provider=${provider}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -166,7 +167,7 @@ export class AvatarWidget {
       await this.peerConnection.setLocalDescription(answer);
 
       // 5. Submit SDP Answer to Backend
-      await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/answer`, {
+      await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/answer?provider=${provider}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -223,9 +224,9 @@ export class AvatarWidget {
     this._setStatus("Speaking...", "speaking");
 
     if (this.activeStreamId) {
-      // D-ID WebRTC Stream speak endpoint
+      // WebRTC Stream speak endpoint (D-ID / HeyGen)
       try {
-        await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/speak`, {
+        await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/speak?provider=${this.options.engine}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
