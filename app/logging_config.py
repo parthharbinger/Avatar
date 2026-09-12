@@ -4,7 +4,10 @@ All logs emitted as JSON for easy ingestion by log aggregators.
 """
 import logging
 import sys
-from pythonjsonlogger.jsonlogger import JsonFormatter
+try:
+    from pythonjsonlogger.json import JsonFormatter
+except ImportError:
+    from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from app.config import settings
 
