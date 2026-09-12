@@ -8,6 +8,7 @@ from typing import AsyncGenerator
 
 import aiohttp
 import edge_tts
+import edge_tts.communicate
 
 from app.tts.base import BaseTTSAdapter, AudioChunk
 from app.config import settings
@@ -24,10 +25,12 @@ class EdgeTTSAdapter(BaseTTSAdapter):
 
     def __init__(self) -> None:
         self._voice = settings.edge_tts_voice
-        # Bypass SSL verification issues in some corporate/restricted networks
-        self._ssl_context = ssl.create_default_context()
-        self._ssl_context.check_hostname = False
-        self._ssl_context.verify_mode = ssl.CERT_NONE
+        if not settings.edge_tts_verify_ssl:
+            try:
+                edge_tts.communicate._SSL_CTX.check_hostname = False
+                edge_tts.communicate._SSL_CTX.verify_mode = ssl.CERT_NONE
+            except Exception as e:
+                logger.warning(f"Could not configure SSL verification on edge-tts: {e}")
 
     def get_provider_name(self) -> str:
         return "edge-tts"
@@ -44,21 +47,25 @@ class EdgeTTSAdapter(BaseTTSAdapter):
             extra={"event": "tts_start", "provider": "edge-tts", "text_len": len(text)},
         )
 
-        connector = aiohttp.TCPConnector(ssl=self._ssl_context)
+        ssl_param = False if not settings.edge_tts_verify_ssl else None
+        connector = aiohttp.TCPConnector(ssl=ssl_param)
         chunk_index = 0
 
         try:
-            async with aiohttp.ClientSession(connector=connector) as session:
-                communicate = edge_tts.Communicate(text=text, voice=self._voice)
+            communicate = edge_tts.Communicate(
+                text=text,
+                voice=self._voice,
+                connector=connector,
+            )
 
-                async for event_type, data in communicate.stream():
-                    if event_type == "audio" and data:
-                        yield AudioChunk(
-                            data=data,
-                            chunk_index=chunk_index,
-                            is_final=False,
-                        )
-                        chunk_index += 1
+            async for chunk in communicate.stream():
+                if chunk.get("type") == "audio" and chunk.get("data"):
+                    yield AudioChunk(
+                        data=chunk["data"],
+                        chunk_index=chunk_index,
+                        is_final=False,
+                    )
+                    chunk_index += 1
 
             # Yield a final empty chunk to signal stream completion
             yield AudioChunk(data=b"", chunk_index=chunk_index, is_final=True)

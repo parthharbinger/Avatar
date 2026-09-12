@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # TTS
     tts_provider: str = "edge-tts"
     edge_tts_voice: str = "en-US-AriaNeural"
+    edge_tts_verify_ssl: bool = False
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     openai_api_key: str = ""
