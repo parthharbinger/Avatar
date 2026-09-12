@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Avatar SDK — Demo</title>
+  <meta name="description" content="Minimal demo of the @avatar-sdk/client embeddable real-time 2D AI avatar." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      font-family: 'Inter', system-ui, sans-serif;
+      color: #e2e8f0;
+      gap: 32px;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+    }
+
+    #avatar-container {
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      box-shadow: 0 0 60px rgba(96, 165, 250, 0.3), 0 0 120px rgba(167, 139, 250, 0.15);
+      overflow: hidden;
+      background: #1a1a2e;
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.05);
+      color: #e2e8f0;
+      font-size: 1rem;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: #60a5fa; }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #btn-connect { background: linear-gradient(135deg, #6366f1, #3b82f6); color: #fff; }
+    #btn-speak   { background: linear-gradient(135deg, #10b981, #3b82f6); color: #fff; }
+    #btn-interrupt { background: linear-gradient(135deg, #ef4444, #f97316); color: #fff; }
+
+    #status {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      text-align: center;
+      min-height: 20px;
+    }
+    #status.ok    { color: #34d399; }
+    #status.error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <h1>🎙️ Real-Time AI Avatar</h1>
+
+  <div id="avatar-container"></div>
+
+  <div class="controls">
+    <textarea
+      id="text-input"
+      rows="3"
+      placeholder="Type something for the avatar to say..."
+    >Hello! I am your real-time AI avatar. I can speak any text you give me with lip-synced animation.</textarea>
+
+    <div class="btn-row">
+      <button id="btn-connect">Connect</button>
+      <button id="btn-speak" disabled>Speak</button>
+      <button id="btn-interrupt" disabled>Interrupt</button>
+    </div>
+
+    <div id="status">Press Connect to start</div>
+  </div>
+
+  <!--
+    In production: import from the built SDK package.
+    For this demo, we load the SDK from the dist/ folder via a relative path.
+
+    <script type="module">
+      import { AvatarClient } from "../sdk/dist/index.mjs";
+      ...
+    </script>
+  -->
+  <script type="module">
+    // ── Import SDK (adjust path if serving from a different location) ──────────
+    // Fallback: inline minimal client for demo if SDK dist not built yet
+    const SERVER_URL = "ws://localhost:8000";
+
+    let socket = null;
+    let audioCtx = null;
+    let nextStartTime = 0;
+    let speechStartContextTime = 0;
+    let visemeTimeline = [];
+    let animRafId = null;
+    let activeSources = [];
+
+    const container   = document.getElementById("avatar-container");
+    const btnConnect  = document.getElementById("btn-connect");
+    const btnSpeak    = document.getElementById("btn-speak");
+    const btnInterrupt = document.getElementById("btn-interrupt");
+    const textInput   = document.getElementById("text-input");
+    const statusEl    = document.getElementById("status");
+
+    // ── Canvas setup ───────────────────────────────────────────────────────
+    const canvas = document.createElement("canvas");
+    canvas.width = 320; canvas.height = 320;
+    canvas.style.cssText = "display:block;width:320px;height:320px;";
+    container.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
+    let currentShape = "neutral";
+    let eyeBlinkProgress = 0;
+    let nextBlinkAt = Date.now() + 2000;
+
+    function drawAvatar() {
+      const cx = 160, cy = 160, r = 130;
+      ctx.clearRect(0, 0, 320, 320);
+      // Head
+      const g = ctx.createRadialGradient(cx-20, cy-20, 10, cx, cy, r);
+      g.addColorStop(0, "#4a90d9"); g.addColorStop(1, "#1a3a6e");
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+      ctx.fillStyle = g; ctx.fill();
+      // Eyes
+      drawEye(cx-42, cy-28); drawEye(cx+42, cy-28);
+      // Mouth
+      drawMouth(cx, cy+48, currentShape);
+      requestAnimationFrame(drawAvatar);
+    }
+
+    function drawEye(x, y) {
+      const h = 12 * (1 - eyeBlinkProgress);
+      ctx.beginPath(); ctx.ellipse(x,y,14,Math.max(1,h),0,0,Math.PI*2);
+      ctx.fillStyle="#fff"; ctx.fill();
+      ctx.beginPath(); ctx.arc(x,y,7,0,Math.PI*2);
+      ctx.fillStyle="#111"; ctx.fill();
+      // Update blink
+      const now = Date.now();
+      if (now >= nextBlinkAt) {
+        eyeBlinkProgress = Math.min(1, eyeBlinkProgress + 0.15);
+        if (eyeBlinkProgress >= 1) {
+          eyeBlinkProgress = 0;
+          nextBlinkAt = now + 2000 + Math.random()*3000;
+        }
+      }
+    }
+
+    function drawMouth(x, y, shape) {
+      ctx.fillStyle="#1a0a0a"; ctx.strokeStyle="#ffb3a7"; ctx.lineWidth=2;
+      if (shape === "neutral") {
+        ctx.beginPath(); ctx.moveTo(x-28,y); ctx.quadraticCurveTo(x,y+10,x+28,y);
+        ctx.strokeStyle="#ffb3a7"; ctx.lineWidth=3; ctx.stroke();
+      } else if (shape === "open") {
+        ctx.beginPath(); ctx.ellipse(x,y+4,28,20,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      } else if (shape === "round") {
+        ctx.beginPath(); ctx.ellipse(x,y+4,16,16,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      } else if (shape === "bilabial") {
+        ctx.beginPath(); ctx.ellipse(x,y,28,4,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.ellipse(x,y+4,24,12,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      }
+    }
+    drawAvatar();
+
+    // ── Audio helpers ──────────────────────────────────────────────────────
+    async function initAudio() {
+      if (!audioCtx) audioCtx = new AudioContext();
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+    }
+
+    function startSpeech() {
+      stopAllAudio();
+      nextStartTime = audioCtx.currentTime + 0.05;
+      speechStartContextTime = nextStartTime;
+    }
+
+    async function enqueueChunk(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+      try {
+        const buffer = await audioCtx.decodeAudioData(bytes.buffer);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(audioCtx.destination);
+        const startAt = Math.max(nextStartTime, audioCtx.currentTime);
+        src.start(startAt);
+        nextStartTime = startAt + buffer.duration;
+        activeSources.push(src);
+        src.onended = () => activeSources = activeSources.filter(s=>s!==src);
+      } catch(e) { console.warn("Chunk decode failed",e); }
+    }
+
+    function stopAllAudio() {
+      activeSources.forEach(s => { try{ s.stop(); }catch{} });
+      activeSources = [];
+      nextStartTime = 0;
+    }
+
+    function getCurrentSpeechMs() {
+      if (!audioCtx || !speechStartContextTime) return 0;
+      return Math.max(0, (audioCtx.currentTime - speechStartContextTime) * 1000);
+    }
+
+    function lookupViseme(nowMs) {
+      if (!visemeTimeline.length) return "neutral";
+      let best = 0;
+      for (let i=0;i<visemeTimeline.length;i++) {
+        if (visemeTimeline[i].t <= nowMs) best = i; else break;
+      }
+      return visemeTimeline[best].v;
+    }
+
+    function startVisemeSync() {
+      function loop() {
+        currentShape = lookupViseme(getCurrentSpeechMs());
+        animRafId = requestAnimationFrame(loop);
+      }
+      animRafId = requestAnimationFrame(loop);
+    }
+
+    function stopVisemeSync() {
+      if (animRafId) { cancelAnimationFrame(animRafId); animRafId = null; }
+      currentShape = "neutral";
+    }
+
+    // ── WebSocket connection ───────────────────────────────────────────────
+    btnConnect.addEventListener("click", async () => {
+      setStatus("Connecting...", "");
+      await initAudio();
+      // 1. Create session
+      const resp = await fetch("http://localhost:8000/api/v1/sessions", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({avatar_id:"default"})
+      });
+      if (!resp.ok) { setStatus("Failed to create session!", "error"); return; }
+      const { ws_url } = await resp.json();
+
+      // 2. Open WebSocket
+      socket = new WebSocket(`ws://localhost:8000${ws_url}`);
+      socket.onopen = () => console.log("WS open");
+      socket.onmessage = async (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "connected") {
+          setStatus("Connected ✓", "ok");
+          btnSpeak.disabled = false;
+          btnInterrupt.disabled = false;
+          btnConnect.disabled = true;
+        } else if (msg.type === "start") {
+          startSpeech();
+          setStatus("Speaking...", "ok");
+        } else if (msg.type === "viseme_timeline") {
+          visemeTimeline = msg.events;
+          startVisemeSync();
+        } else if (msg.type === "audio_chunk") {
+          await enqueueChunk(msg.data);
+        } else if (msg.type === "end") {
+          stopVisemeSync();
+          setStatus("Done ✓", "ok");
+        } else if (msg.type === "interrupted") {
+          stopAllAudio(); stopVisemeSync();
+          setStatus("Interrupted", "");
+        } else if (msg.type === "error") {
+          setStatus("Error: " + msg.message, "error");
+        }
+      };
+      socket.onerror = () => setStatus("Connection error!", "error");
+      socket.onclose = () => {
+        setStatus("Disconnected", ""); btnConnect.disabled = false;
+        btnSpeak.disabled = true; btnInterrupt.disabled = true;
+      };
+    });
+
+    btnSpeak.addEventListener("click", () => {
+      const text = textInput.value.trim();
+      if (!text || !socket) return;
+      socket.send(JSON.stringify({ action: "speak", text }));
+      setStatus("Sending...", "");
+    });
+
+    btnInterrupt.addEventListener("click", () => {
+      if (!socket) return;
+      socket.send(JSON.stringify({ action: "interrupt" }));
+      stopAllAudio(); stopVisemeSync();
+      setStatus("Interrupted", "");
+    });
+
+    function setStatus(msg, cls) {
+      statusEl.textContent = msg;
+      statusEl.className = cls;
+    }
+  </script>
+</body>
+</html>
