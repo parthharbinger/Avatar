@@ -123,6 +123,34 @@ Mid-sentence interruption is handled natively:
 
 ---
 
+### 3.3 HeyGen Studio Video Generation Pipeline (MP4)
+
+```
+┌─────────────────┐             ┌─────────────────────┐             ┌─────────────────────┐
+│  Client Widget  │             │   FastAPI Backend   │             │   HeyGen Studio API │
+└────────┬────────┘             └──────────┬──────────┘             └──────────┬──────────┘
+         │                                 │                                   │
+         │  POST /video/heygen/generate    │  POST /v2/video/generate          │
+         ├────────────────────────────────►├──────────────────────────────────►│
+         │  { video_id, status }           │  { data: { video_id } }           │
+         │◄────────────────────────────────┼◄──────────────────────────────────┤
+         │                                 │                                   │
+         │  (Polling loop every 3s)        │  GET /v1/video_status.get?id=...  │
+         │  GET /video/heygen/{id}/status  ├──────────────────────────────────►│
+         │                                 │  { status: 'processing' }         │
+         │  { status: 'processing' }       │◄──────────────────────────────────┤
+         │◄────────────────────────────────┤                                   │
+         │                                 │  GET /v1/video_status.get?id=...  │
+         │                                 ├──────────────────────────────────►│
+         │                                 │  { status: 'completed', url }     │
+         │  { status: 'completed', url }   │◄──────────────────────────────────┤
+         │◄────────────────────────────────┤                                   │
+         │                                 │                                   │
+         │  ◄════════════ Video Playback & MP4 Download ═══════════════════════┤
+```
+
+---
+
 ## 4. Latency Breakdown & Performance Metrics
 
 | Step | Operation | Measured Latency |

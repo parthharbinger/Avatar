@@ -54,11 +54,13 @@ import os
 from fastapi.staticfiles import StaticFiles
 
 from app.api.conversation import router as conversation_router
+from app.api.heygen_video import router as heygen_video_router
 
 # Mount routers
 app.include_router(sessions_router)
 app.include_router(websocket_router)
 app.include_router(conversation_router)
+app.include_router(heygen_video_router)
 
 # Mount demo page, assets, and SDK dist
 base_dir = os.path.dirname(os.path.dirname(__file__))

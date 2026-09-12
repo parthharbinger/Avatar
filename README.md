@@ -12,9 +12,10 @@
 
 ## 🌟 Key Highlights & Capabilities
 
-- **🎬 Dual Rendering Engines**:
-  - **Photorealistic WebRTC Video Engine**: Streams live talking video avatars via D-ID / HeyGen over WebRTC with sub-450ms TTFF.
-  - **Lightweight 2D Neural Canvas Engine**: Synchronizes 24kHz HD neural speech (Edge-TTS) with multi-layer mouth visemes, breathing micro-motion, and natural blinking over WebSocket.
+- **🎬 Multi-Modal Video & Streaming Capabilities**:
+  - **Photorealistic WebRTC Video Engine (D-ID)**: Real-time bidirectional WebRTC streaming avatar for conversational interaction with sub-450ms latency.
+  - **Standard Studio Video Generator (HeyGen)**: Asynchronous studio-grade MP4 video generation pipeline via HeyGen API (`/api/v1/video/heygen/generate`).
+  - **Lightweight 2D Neural Canvas Engine**: 24kHz HD neural speech (Edge-TTS) with multi-layer mouth visemes, breathing micro-motion, and natural blinking over WebSocket.
 - **🤖 Real-Time Conversational AI (Groq LLM)**: The avatar thinks and responds conversationally in `< 180ms` with intelligent dialog memory.
 - **🎙️ Voice-to-Voice Microphone Input**: Integrated Web Speech API and Groq Whisper ASR (`whisper-large-v3-turbo`).
 - **⚡ Frame-Accurate Lip-Sync**: Powered by Microsoft Speech `WordBoundary` metadata timestamps matching exact syllable durations.
@@ -34,9 +35,9 @@
  │  import { createAvatarWidget } from "@avatar-sdk/client";  │
  └─────────────────────────────┬──────────────────────────────┘
                                │
-            ┌──────────────────┴──────────────────┐
-            │ WebRTC Video & Audio                │ WebSocket (JSON + MP3)
-            ▼                                     ▼
+            ┌──────────────────┼──────────────────┐
+            │ WebRTC Video     │ WebSocket        │ REST Studio
+            ▼                  ▼                  ▼
  ┌────────────────────────────────────────────────────────────┐
  │                FastAPI Backend Microservice                │
  │                                                            │
@@ -44,10 +45,12 @@
  │   • POST /api/v1/sessions             (Session Lifecycle)  │
  │   • POST /api/v1/chat/respond         (Groq LLM Engine)    │
  │   • POST /api/v1/chat/transcribe      (Whisper ASR)        │
- │   • POST /api/v1/sessions/.../webrtc  (D-ID / HeyGen SDP)  │
+ │   • POST /api/v1/sessions/.../webrtc  (D-ID Live Stream)   │
+ │   • POST /api/v1/video/heygen/...     (HeyGen Studio Video)│
  │                                                            │
  │  Streaming Pipeline:                                       │
- │   • WebRTC Adapter ──► D-ID / HeyGen Live Video Stream     │
+ │   • WebRTC Adapter ──► D-ID Real-Time Video Stream         │
+ │   • Studio Service ──► HeyGen Cloud Video Renderer (MP4)   │
  │   • WebSocket ───────► Edge-TTS + WordBoundary Mapper      │
  │   • Interruption ────► Asyncio Task Cancellation           │
  └────────────────────────────────────────────────────────────┘

@@ -307,6 +307,52 @@
       color: #38bdf8;
     }
 
+    .top-nav-tabs {
+      display: flex;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 8px;
+    }
+    .nav-tab {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 8px 18px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .nav-tab.active {
+      background: #6366f1;
+      color: #ffffff;
+      box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+    }
+    #heygen-studio-stage {
+      display: none;
+      width: 100%;
+      max-width: 800px;
+      background: rgba(30, 41, 59, 0.6);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 24px;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .heygen-video-preview {
+      width: 100%;
+      max-height: 380px;
+      border-radius: 14px;
+      background: #090d16;
+      display: none;
+      object-fit: cover;
+    }
     #status {
       font-size: 0.82rem;
       text-align: center;
@@ -321,10 +367,17 @@
 </head>
 <body>
 
-  <div class="header-badge">Real-Time Interactive AI Avatar</div>
-  <h1>Live Conversational Video & Audio Stream</h1>
+  <div class="header-badge">AI Avatar Platform</div>
+  <h1>Interactive Live Streaming & Studio Video</h1>
 
-  <div class="main-stage">
+  <!-- Navigation Tabs -->
+  <div class="top-nav-tabs">
+    <button class="nav-tab active" id="tab-btn-interactive">⚡ Live Stream (D-ID & Canvas)</button>
+    <button class="nav-tab" id="tab-btn-heygen">🎬 HeyGen Studio Video (MP4)</button>
+  </div>
+
+  <!-- Interactive Live Stage (D-ID & Canvas) -->
+  <div class="main-stage" id="interactive-stage">
     
     <!-- Avatar Viewport -->
     <div class="avatar-wrapper">
@@ -359,7 +412,6 @@
         <select id="engine-select">
           <option value="d-id" selected>🎬 D-ID WebRTC Stream (Photorealistic Video)</option>
           <option value="edge-tts">⚡ Lightweight 2D Canvas (Edge-TTS + HD Canvas)</option>
-          <option value="heygen">🎬 HeyGen Interactive Avatar (Studio Video)</option>
         </select>
       </div>
 
@@ -418,6 +470,36 @@
       <div id="status">Click Connect to start real-time session</div>
     </div>
 
+  </div>
+
+  <!-- HeyGen Studio Video Generator Stage -->
+  <div id="heygen-studio-stage">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="font-size:1.3rem;">🎬 HeyGen Studio Video Generator</h2>
+      <span style="font-size:0.75rem; color:#38bdf8; background:rgba(56,189,248,0.15); padding:4px 10px; border-radius:999px;">Standard MP4 Generation</span>
+    </div>
+    <p style="font-size:0.85rem; color:#94a3b8;">Generate studio-grade, downloadable MP4 avatar videos using your HeyGen API key.</p>
+
+    <div class="form-group">
+      <label class="form-label"><span>HeyGen Presenter / Avatar</span></label>
+      <select id="heygen-avatar-select">
+        <option value="Abigail_expressive_2024112501" selected>Abigail (Upper Body Expressive)</option>
+        <option value="Abigail_standing_office_front">Abigail (Office Front)</option>
+        <option value="Abigail_sitting_sofa_front">Abigail (Sofa Front)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label"><span>Script / Narration</span></label>
+      <textarea id="heygen-script" rows="3" placeholder="Enter script for HeyGen avatar to speak...">Welcome to our platform demonstration. Today I will introduce you to our next-generation AI video technology.</textarea>
+    </div>
+
+    <button class="action-btn" id="btn-heygen-generate" style="background:linear-gradient(135deg, #6366f1, #a855f7); color:#fff; padding:12px;">🚀 Generate Studio Video (HeyGen)</button>
+
+    <div id="heygen-status" style="font-size:0.85rem; text-align:center; color:#94a3b8; min-height:20px;"></div>
+
+    <video id="heygen-result-video" class="heygen-video-preview" controls playsinline></video>
+    <a id="heygen-download-btn" href="#" target="_blank" download style="display:none; text-align:center; color:#38bdf8; font-size:0.85rem; text-decoration:none; font-weight:600;">⬇️ Download Generated MP4 Video</a>
   </div>
 
   <script type="module">
@@ -1149,6 +1231,145 @@
       statusEl.textContent = msg;
       statusEl.className = cls;
     }
+
+    // ── Tab Switching Navigation ─────────────────────────────────────────────
+    const tabInteractive = document.getElementById("tab-btn-interactive");
+    const tabHeygen = document.getElementById("tab-btn-heygen");
+    const stageInteractive = document.getElementById("interactive-stage");
+    const stageHeygen = document.getElementById("heygen-studio-stage");
+
+    tabInteractive.addEventListener("click", () => {
+      tabInteractive.classList.add("active");
+      tabHeygen.classList.remove("active");
+      stageInteractive.style.display = "flex";
+      stageHeygen.style.display = "none";
+    });
+
+    tabHeygen.addEventListener("click", async () => {
+      tabHeygen.classList.add("active");
+      tabInteractive.classList.remove("active");
+      stageInteractive.style.display = "none";
+      stageHeygen.style.display = "flex";
+
+      // Load HeyGen avatars if select has only defaults
+      try {
+        const res = await fetch("http://localhost:8000/api/v1/video/heygen/avatars");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.avatars && data.avatars.length > 0) {
+            const select = document.getElementById("heygen-avatar-select");
+            select.innerHTML = "";
+            data.avatars.forEach(av => {
+              const opt = document.createElement("option");
+              opt.value = av.avatar_id;
+              opt.textContent = `${av.avatar_name || av.avatar_id} (${av.gender || 'Avatar'})`;
+              select.appendChild(opt);
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch remote HeyGen avatars:", err);
+      }
+    });
+
+    // ── HeyGen Studio Video Generator Handler ───────────────────────────────
+    const btnHeygenGen = document.getElementById("btn-heygen-generate");
+    const heygenScript = document.getElementById("heygen-script");
+    const heygenAvatarSelect = document.getElementById("heygen-avatar-select");
+    const heygenStatus = document.getElementById("heygen-status");
+    const heygenVideo = document.getElementById("heygen-result-video");
+    const heygenDownloadBtn = document.getElementById("heygen-download-btn");
+
+    btnHeygenGen.addEventListener("click", async () => {
+      const scriptText = heygenScript.value.trim();
+      const avatarId = heygenAvatarSelect.value;
+      if (!scriptText) {
+        heygenStatus.textContent = "Please enter a script or message to generate.";
+        heygenStatus.style.color = "#f87171";
+        return;
+      }
+
+      btnHeygenGen.disabled = true;
+      btnHeygenGen.textContent = "⏳ Submitting Task to HeyGen...";
+      heygenStatus.textContent = "Contacting HeyGen Studio Video API...";
+      heygenStatus.style.color = "#38bdf8";
+      heygenVideo.style.display = "none";
+      heygenDownloadBtn.style.display = "none";
+
+      try {
+        const resp = await fetch("http://localhost:8000/api/v1/video/heygen/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: scriptText,
+            avatar_id: avatarId,
+            title: `Demo Video - ${new Date().toLocaleTimeString()}`
+          })
+        });
+
+        if (!resp.ok) {
+          const errData = await resp.json();
+          throw new Error(errData.detail || "Failed to initiate HeyGen video generation");
+        }
+
+        const data = await resp.json();
+        const videoId = data.video_id;
+        heygenStatus.textContent = `Rendering video on HeyGen cloud (Task ID: ${videoId}). Polling status...`;
+        btnHeygenGen.textContent = "🔄 Rendering Video in Cloud...";
+
+        // Poll video status every 3 seconds
+        let attempts = 0;
+        const maxAttempts = 60; // 3 minutes timeout
+
+        const pollInterval = setInterval(async () => {
+          attempts++;
+          try {
+            const statusResp = await fetch(`http://localhost:8000/api/v1/video/heygen/${videoId}/status`);
+            if (!statusResp.ok) throw new Error("Status check failed");
+            const statusData = await statusResp.json();
+
+            if (statusData.status === "completed" && statusData.video_url) {
+              clearInterval(pollInterval);
+              heygenStatus.textContent = "✨ Video Generated Successfully! Ready to watch & download.";
+              heygenStatus.style.color = "#34d399";
+              heygenVideo.src = statusData.video_url;
+              heygenVideo.style.display = "block";
+              heygenVideo.play().catch(console.warn);
+
+              heygenDownloadBtn.href = statusData.video_url;
+              heygenDownloadBtn.style.display = "inline-block";
+
+              btnHeygenGen.disabled = false;
+              btnHeygenGen.textContent = "🚀 Generate Studio Video (HeyGen)";
+            } else if (statusData.status === "failed") {
+              clearInterval(pollInterval);
+              heygenStatus.textContent = `❌ Video generation failed: ${statusData.error || 'Unknown error'}`;
+              heygenStatus.style.color = "#f87171";
+              btnHeygenGen.disabled = false;
+              btnHeygenGen.textContent = "🚀 Generate Studio Video (HeyGen)";
+            } else {
+              heygenStatus.textContent = `⏳ Rendering video (${statusData.status || 'processing'})... [${attempts * 3}s elapsed]`;
+            }
+
+            if (attempts >= maxAttempts) {
+              clearInterval(pollInterval);
+              heygenStatus.textContent = "⚠️ Video rendering is taking longer than expected. Please check your HeyGen dashboard.";
+              heygenStatus.style.color = "#fbbf24";
+              btnHeygenGen.disabled = false;
+              btnHeygenGen.textContent = "🚀 Generate Studio Video (HeyGen)";
+            }
+          } catch (pollErr) {
+            console.warn("Polling error:", pollErr);
+          }
+        }, 3000);
+
+      } catch (err) {
+        heygenStatus.textContent = `❌ ${err.message}`;
+        heygenStatus.style.color = "#f87171";
+        btnHeygenGen.disabled = false;
+        btnHeygenGen.textContent = "🚀 Generate Studio Video (HeyGen)";
+      }
+    });
   </script>
 </body>
 </html>
