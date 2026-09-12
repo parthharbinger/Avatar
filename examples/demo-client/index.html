@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Global Travel & Flights — AI Concierge</title>
+  <meta name="description" content="Apex Global Travel booking platform powered by an embedded AI talking concierge." />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="logo">
+      <span class="logo-icon">✈️</span>
+      <span class="logo-text">Apex<b>Travel</b></span>
+    </div>
+    <nav class="nav-links">
+      <a href="#destinations">Destinations</a>
+      <a href="#flights">Flight Deals</a>
+      <a href="#hotels">Hotels</a>
+      <a href="#packages">Vacations</a>
+      <a href="#support" class="nav-highlight">24/7 AI Concierge</a>
+    </nav>
+    <button class="nav-btn">Sign In</button>
+  </header>
+
+  <!-- Main Travel Portal Layout with Embedded AI Avatar -->
+  <main class="main-layout">
+
+    <!-- Left: Travel Search & Promo Dashboard -->
+    <section class="portal-content">
+      
+      <div class="hero-banner">
+        <span class="promo-pill">🔥 Fall Getaway Sale — Up to 40% Off Flights</span>
+        <h1>Explore the World with Real-Time AI Assistance</h1>
+        <p>Book flights, boutique hotels, and luxury excursions worldwide with instant guidance from Emma, your dedicated AI travel concierge.</p>
+      </div>
+
+      <!-- Quick Flight Search Widget -->
+      <div class="flight-search-box">
+        <div class="search-inputs">
+          <div class="input-field">
+            <label>Departure City</label>
+            <input type="text" value="San Francisco (SFO)" readonly />
+          </div>
+          <div class="input-field">
+            <label>Destination</label>
+            <input type="text" value="Tokyo, Japan (HND)" readonly />
+          </div>
+          <div class="input-field">
+            <label>Dates</label>
+            <input type="text" value="Oct 14 — Oct 22" readonly />
+          </div>
+          <button class="search-btn">Search Flights</button>
+        </div>
+      </div>
+
+      <!-- Featured Destinations -->
+      <h2 class="section-title">Trending Destinations</h2>
+      <div class="destinations-grid">
+        <div class="dest-card" onclick="askConcierge('Tell me about flights and best times to visit Tokyo!')">
+          <div class="dest-img" style="background: linear-gradient(135deg, #ec4899, #8b5cf6);">🗼</div>
+          <div class="dest-info">
+            <h3>Tokyo, Japan</h3>
+            <p>From $649 roundtrip • Ask concierge for advice</p>
+          </div>
+        </div>
+        <div class="dest-card" onclick="askConcierge('What are the best attractions and flight deals for Paris?')">
+          <div class="dest-img" style="background: linear-gradient(135deg, #3b82f6, #06b6d4);">🥐</div>
+          <div class="dest-info">
+            <h3>Paris, France</h3>
+            <p>From $520 roundtrip • Ask concierge for advice</p>
+          </div>
+        </div>
+        <div class="dest-card" onclick="askConcierge('Can you help me plan a luxury weekend in Dubai?')">
+          <div class="dest-img" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">🏜️</div>
+          <div class="dest-info">
+            <h3>Dubai, UAE</h3>
+            <p>From $790 roundtrip • Ask concierge for advice</p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Right: Embedded AI Avatar Concierge (Powered entirely by @avatar-sdk/client) -->
+    <aside class="concierge-sidebar">
+      <div class="integration-notice">
+        <span>⚡ Embedded via <code>@avatar-sdk/client</code> in 3 lines of code</span>
+      </div>
+      <!-- SDK Mount Target -->
+      <div id="ai-concierge-slot"></div>
+    </aside>
+
+  </main>
+
+  <!-- Client Script consuming the SDK -->
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

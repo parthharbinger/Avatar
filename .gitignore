@@ -39,7 +39,9 @@ Thumbs.db
 # Logs
 *.log
 
-# Node (SDK)
+# Node (SDK & Examples)
 node_modules/
-sdk/dist/
+**/node_modules/
+dist/
+**/dist/
 sdk/*.tgz
