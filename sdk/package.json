@@ -1,0 +1,32 @@
+{
+  "name": "@avatar-sdk/client",
+  "version": "0.1.0",
+  "description": "Embeddable real-time 2D AI avatar SDK — drop a talking avatar into any web app in minutes.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["avatar", "tts", "websocket", "real-time", "lip-sync", "sdk"],
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0",
+    "@types/node": "^20.0.0",
+    "jsdom": "^24.0.0",
+    "@vitest/browser": "^1.6.0"
+  }
+}
