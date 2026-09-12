@@ -50,9 +50,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import os
+from fastapi.staticfiles import StaticFiles
+
 # Mount routers
 app.include_router(sessions_router)
 app.include_router(websocket_router)
+
+# Mount demo page and assets
+demo_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "demo")
+if os.path.exists(demo_dir):
+    app.mount("/demo", StaticFiles(directory=demo_dir, html=True), name="demo")
 
 
 @app.get("/health", tags=["Health"])

@@ -14,7 +14,7 @@ from typing import Optional
 from fastapi import WebSocket
 
 from app.tts import get_tts_adapter
-from app.viseme.mapper import map_text_to_visemes
+from app.viseme.mapper import map_text_to_visemes, from_word_boundaries
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)

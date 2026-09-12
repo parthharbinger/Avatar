@@ -345,12 +345,25 @@
         this.mouthRatioY = isMale ? 0.345 : 0.355;
         this.eyeRatioY = isMale ? 0.250 : 0.255;
         const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = src;
+        if (src.startsWith("http://") || src.startsWith("https://")) {
+          img.crossOrigin = "anonymous";
+        }
         img.onload = () => {
           this.avatarImg = img;
           this.isLoaded = true;
         };
+        img.onerror = (err) => {
+          console.warn("Avatar image failed to load from:", src, err);
+          // Try alternative relative path
+          const altSrc = src.startsWith("./") ? src.replace("./", "") : "./" + src;
+          const img2 = new Image();
+          img2.onload = () => {
+            this.avatarImg = img2;
+            this.isLoaded = true;
+          };
+          img2.src = altSrc;
+        };
+        img.src = src;
       }
 
       loadTimeline(events) {

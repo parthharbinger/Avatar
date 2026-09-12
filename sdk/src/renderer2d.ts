@@ -53,8 +53,9 @@ export class Renderer2D {
   setImage(src: string): void {
     this.isImgLoaded = false;
     const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = src;
+    if (src.startsWith("http://") || src.startsWith("https://")) {
+      img.crossOrigin = "anonymous";
+    }
     img.onload = () => {
       this.avatarImg = img;
       this.isImgLoaded = true;
@@ -65,6 +66,7 @@ export class Renderer2D {
       this.isImgLoaded = false;
       this._draw();
     };
+    img.src = src;
   }
 
   /** Load a new viseme timeline for an upcoming speech turn */
