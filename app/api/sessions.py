@@ -117,7 +117,15 @@ async def create_webrtc_offer(session_id: str, avatar_id: Optional[str] = None):
         )
 
     try:
-        data = await provider.create_stream(session_id=session_id, avatar_id=avatar_id)
+        effective_avatar_id = avatar_id
+        if not effective_avatar_id:
+            try:
+                session = await session_manager.get_session(session_id)
+                effective_avatar_id = session.avatar_id
+            except Exception:
+                pass
+
+        data = await provider.create_stream(session_id=session_id, avatar_id=effective_avatar_id)
         return WebRTCOfferResponse(**data)
     except Exception as e:
         logger.error("WebRTC offer creation failed", extra={"error": str(e)})

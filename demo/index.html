@@ -693,22 +693,36 @@
     const statVisemes = document.getElementById("stat-visemes");
     const statChunks = document.getElementById("stat-chunks");
 
+    let currentAvatarId = "female";
+
     // Avatar identity buttons
     const btnFem = document.getElementById("btn-avatar-female");
     const btnMale = document.getElementById("btn-avatar-male");
 
-    btnFem.onclick = () => {
+    btnFem.onclick = async () => {
+      if (currentAvatarId === "female") return;
       btnFem.classList.add("active");
       btnMale.classList.remove("active");
+      currentAvatarId = "female";
       renderer.setImage("assets/avatar_female.jpg", false);
       voiceSelect.value = "en-US-JennyNeural";
+      if (engineSelect.value !== "edge-tts" && peerConnection) {
+        btnConnect.disabled = false;
+        btnConnect.click();
+      }
     };
 
-    btnMale.onclick = () => {
+    btnMale.onclick = async () => {
+      if (currentAvatarId === "male") return;
       btnMale.classList.add("active");
       btnFem.classList.remove("active");
+      currentAvatarId = "male";
       renderer.setImage("assets/avatar_male.jpg", true);
       voiceSelect.value = "en-US-ChristopherNeural";
+      if (engineSelect.value !== "edge-tts" && peerConnection) {
+        btnConnect.disabled = false;
+        btnConnect.click();
+      }
     };
 
     engineSelect.onchange = () => {
@@ -734,10 +748,15 @@
       await audio.init();
 
       try {
+        if (peerConnection) {
+          try { peerConnection.close(); } catch(e){}
+          peerConnection = null;
+        }
+
         const resp = await fetch("http://localhost:8000/api/v1/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ avatar_id: "default" })
+          body: JSON.stringify({ avatar_id: currentAvatarId })
         });
         if (!resp.ok) throw new Error("Failed session creation");
         const { session_id, ws_url } = await resp.json();
@@ -798,9 +817,9 @@
 
         } else {
           // ── WebRTC 3rd-Party Video Mode (D-ID / HeyGen) ──
-          setStatus(`Initializing WebRTC stream (${engine.toUpperCase()})...`, "");
+          setStatus(`Initializing WebRTC stream (${currentAvatarId.toUpperCase()})...`, "");
           
-          const offerResp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/offer`, {
+          const offerResp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/offer?avatar_id=${currentAvatarId}`, {
             method: "POST"
           });
           if (!offerResp.ok) {
