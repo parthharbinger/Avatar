@@ -1,7 +1,7 @@
 /**
  * AvatarWidget — Drop-in plug-and-play AI Avatar component.
  * Allows any website of any domain to embed a full interactive talking avatar
- * with voice input, conversational LLM, and lip-synced video in a single function call.
+ * with voice input, conversational LLM, and photorealistic D-ID WebRTC video stream in a single function call.
  */
 import { AvatarClient } from "./client";
 
@@ -12,6 +12,8 @@ export interface AvatarWidgetOptions {
   floating?: boolean;
   /** Server URL of the avatar backend, e.g. "http://localhost:8000" */
   serverUrl?: string;
+  /** Avatar engine: 'd-id' (Photorealistic WebRTC Video) or 'canvas' ($0 2D Engine). Default: 'd-id' */
+  engine?: "d-id" | "webrtc" | "canvas" | "edge-tts" | "heygen";
   /** Avatar persona: 'emma' / 'female', 'david' / 'male', or custom image URL */
   avatar?: string;
   /** Voice name, e.g. 'en-US-JennyNeural', 'en-US-ChristopherNeural' */
@@ -25,25 +27,34 @@ export interface AvatarWidgetOptions {
 }
 
 export class AvatarWidget {
-  private client: AvatarClient;
+  private client: AvatarClient | null = null;
   private container: HTMLElement;
   private rootEl: HTMLElement;
+  private videoEl: HTMLVideoElement | null = null;
+  private canvasSlot: HTMLElement | null = null;
   private chatHistory: Array<{ role: string; content: string }> = [];
   private options: Required<AvatarWidgetOptions>;
   private isListening = false;
   private recognition: any = null;
 
+  // WebRTC Streaming State (D-ID / HeyGen)
+  private peerConnection: RTCPeerConnection | null = null;
+  private activeSessionId: string | null = null;
+  private activeStreamId: string | null = null;
+  private providerSessionId: string | null = null;
+
   constructor(options: AvatarWidgetOptions = {}) {
     const serverUrl = options.serverUrl || "http://localhost:8000";
-    const wsUrl = serverUrl.replace("https://", "wss://").replace("http://", "ws://");
+    const engine = options.engine || "d-id";
 
     this.options = {
       target: options.target || document.body,
       floating: options.floating ?? false,
       serverUrl,
+      engine,
       avatar: options.avatar || "female",
       voice: options.voice || (options.avatar === "male" || options.avatar === "david" ? "en-US-ChristopherNeural" : "en-US-JennyNeural"),
-      title: options.title || "AI Assistant",
+      title: options.title || "AI Concierge",
       welcomeMessage: options.welcomeMessage || "Hello! How can I assist you today?",
       systemPrompt: options.systemPrompt || "You are a helpful, friendly AI concierge. Keep answers concise (1-2 sentences).",
     };
@@ -57,50 +68,187 @@ export class AvatarWidget {
       this.container = this.options.target;
     }
 
-    // Initialize SDK Client
+    this.rootEl = this._renderWidgetDOM();
+    this.canvasSlot = this.rootEl.querySelector(".avatar-widget-canvas-slot") as HTMLElement;
+    this.videoEl = this.rootEl.querySelector(".avatar-widget-video") as HTMLVideoElement;
+
+    this._setupSpeechRecognition();
+    this._bindEvents();
+  }
+
+  /** Initialize and connect the avatar stream */
+  async init(): Promise<void> {
+    const isWebRTC = this.options.engine === "d-id" || this.options.engine === "webrtc" || this.options.engine === "heygen";
+
+    if (isWebRTC) {
+      await this._initWebRTCStream();
+    } else {
+      await this._initCanvasStream();
+    }
+  }
+
+  /** Initialize Photorealistic D-ID WebRTC Video Stream */
+  private async _initWebRTCStream(): Promise<void> {
+    this._setStatus("Connecting WebRTC Stream...", "");
+    if (this.videoEl) this.videoEl.style.display = "block";
+
+    try {
+      if (this.peerConnection) {
+        try { this.peerConnection.close(); } catch(e){}
+        this.peerConnection = null;
+      }
+
+      // 1. Create REST session
+      const sessResp = await fetch(`${this.options.serverUrl}/api/v1/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar_id: this.options.avatar }),
+      });
+      if (!sessResp.ok) throw new Error("Failed to create avatar session");
+      const sessData = await sessResp.json();
+      this.activeSessionId = sessData.session_id;
+
+      // 2. Fetch WebRTC Offer from D-ID backend adapter
+      const offerResp = await fetch(
+        `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/offer?avatar_id=${this.options.avatar}`,
+        { method: "POST" }
+      );
+      if (!offerResp.ok) {
+        const err = await offerResp.json();
+        throw new Error(err.detail || "WebRTC offer creation failed");
+      }
+
+      const offerData = await offerResp.json();
+      this.activeStreamId = offerData.stream_id;
+      this.providerSessionId = offerData.did_session_id;
+
+      // 3. Setup RTCPeerConnection
+      this.peerConnection = new RTCPeerConnection({
+        iceServers: offerData.ice_servers || [{ urls: ["stun:stun.l.google.com:19302"] }],
+      });
+
+      this.peerConnection.ontrack = (event) => {
+        if (event.track.kind === "video" && this.videoEl) {
+          this.videoEl.srcObject = event.streams[0];
+          this.videoEl.play().catch(console.warn);
+          this._setStatus("Online ✓ (Live Video Stream)", "ok");
+          this._triggerGreeting();
+        }
+      };
+
+      this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/ice`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              stream_id: this.activeStreamId,
+              candidate: event.candidate,
+              provider_session_id: this.providerSessionId,
+            }),
+          }).catch(console.warn);
+        }
+      };
+
+      this.peerConnection.onconnectionstatechange = () => {
+        if (
+          this.peerConnection?.connectionState === "disconnected" ||
+          this.peerConnection?.connectionState === "failed" ||
+          this.peerConnection?.connectionState === "closed"
+        ) {
+          this._setStatus("Stream idle. Reconnecting...", "");
+        }
+      };
+
+      // 4. Set Remote Description & Create SDP Answer
+      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offerData.offer));
+      const answer = await this.peerConnection.createAnswer();
+      await this.peerConnection.setLocalDescription(answer);
+
+      // 5. Submit SDP Answer to Backend
+      await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stream_id: this.activeStreamId,
+          answer: answer,
+          provider_session_id: this.providerSessionId,
+        }),
+      });
+
+      this._setStatus("WebRTC Connected ✓ Waiting for video...", "ok");
+
+    } catch (err: any) {
+      console.error("[AvatarWidget] WebRTC Stream Error:", err);
+      this._setStatus(`Connection error: ${err.message}`, "error");
+    }
+  }
+
+  /** Initialize 2D Canvas Fallback Stream */
+  private async _initCanvasStream(): Promise<void> {
+    if (this.videoEl) this.videoEl.style.display = "none";
+    const wsUrl = this.options.serverUrl.replace("https://", "wss://").replace("http://", "ws://");
+
     this.client = new AvatarClient({
       serverUrl: wsUrl,
       avatarId: this.options.avatar,
     });
 
-    this.rootEl = this._renderWidgetDOM();
-    this._setupSpeechRecognition();
-    this._bindEvents();
-  }
-
-  /** Initialize and connect the avatar */
-  async init(): Promise<void> {
-    const mountArea = this.rootEl.querySelector(".avatar-widget-canvas-slot") as HTMLElement;
-    this.client.mount(mountArea, this.options.avatar);
+    if (this.canvasSlot) {
+      this.client.mount(this.canvasSlot, this.options.avatar);
+    }
 
     try {
       this._setStatus("Connecting...", "");
       await this.client.connect();
       this._setStatus("Online ✓", "ok");
-
-      if (this.options.welcomeMessage) {
-        this.addMessage("avatar", this.options.welcomeMessage);
-        // Small delay before speaking greeting
-        setTimeout(() => {
-          this.client.speak(this.options.welcomeMessage, { voice: this.options.voice });
-        }, 400);
-      }
+      this._triggerGreeting();
     } catch (err: any) {
       this._setStatus("Offline (Click to retry)", "error");
-      console.error("[AvatarWidget] Connection error:", err);
+      console.error("[AvatarWidget] Canvas connection error:", err);
     }
   }
 
-  /** Speak arbitrary text */
-  speak(text: string): void {
-    this.addMessage("avatar", text);
-    this.client.speak(text, { voice: this.options.voice });
+  private _triggerGreeting(): void {
+    if (this.options.welcomeMessage) {
+      this.addMessage("avatar", this.options.welcomeMessage);
+      setTimeout(() => {
+        this.speak(this.options.welcomeMessage);
+      }, 500);
+    }
+  }
+
+  /** Speak arbitrary text through active avatar stream */
+  async speak(text: string): Promise<void> {
+    this._setStatus("Speaking...", "speaking");
+
+    if (this.activeStreamId) {
+      // D-ID WebRTC Stream speak endpoint
+      try {
+        await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/speak`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            stream_id: this.activeStreamId,
+            text: text,
+            voice: this.options.voice,
+            provider_session_id: this.providerSessionId,
+          }),
+        });
+        setTimeout(() => this._setStatus("Online ✓", "ok"), 3500);
+      } catch (err: any) {
+        console.error("[AvatarWidget] Speak error:", err);
+        this._setStatus("Speak error", "error");
+      }
+    } else if (this.client) {
+      this.client.speak(text, { voice: this.options.voice });
+    }
   }
 
   /** Ask conversational AI a question */
   async ask(query: string): Promise<string> {
     this.addMessage("user", query);
-    this._setStatus("Thinking...", "speaking");
+    this._setStatus("Thinking (Groq LLM)...", "speaking");
 
     try {
       const resp = await fetch(`${this.options.serverUrl}/api/v1/chat/respond`, {
@@ -121,7 +269,7 @@ export class AvatarWidget {
       this.chatHistory.push({ role: "user", content: query });
       this.chatHistory.push({ role: "assistant", content: reply });
 
-      this.client.speak(reply, { voice: this.options.voice });
+      await this.speak(reply);
       return reply;
     } catch (err: any) {
       this._setStatus("Error generating response", "error");
@@ -131,7 +279,7 @@ export class AvatarWidget {
 
   /** Interrupt current speech */
   interrupt(): void {
-    this.client.interrupt();
+    if (this.client) this.client.interrupt();
     this._setStatus("Interrupted", "");
   }
 
@@ -209,7 +357,7 @@ export class AvatarWidget {
           box-shadow: 0 0 8px #10b981;
         }
         .avatar-widget-status {
-          font-size: 0.75rem;
+          font-size: 0.72rem;
           color: #94a3b8;
         }
         .avatar-widget-status.ok { color: #34d399; }
@@ -220,6 +368,13 @@ export class AvatarWidget {
           height: 220px;
           background: #090d16;
           position: relative;
+          overflow: hidden;
+        }
+        .avatar-widget-video {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: none;
         }
         .avatar-widget-history {
           height: 100px;
@@ -294,7 +449,9 @@ export class AvatarWidget {
         <span class="avatar-widget-title">${this._escape(this.options.title)}</span>
         <span class="avatar-widget-status">Connecting...</span>
       </div>
-      <div class="avatar-widget-canvas-slot"></div>
+      <div class="avatar-widget-canvas-slot">
+        <video class="avatar-widget-video" autoplay playsinline></video>
+      </div>
       <div class="avatar-widget-history"></div>
       <div class="avatar-widget-input-bar">
         <input class="avatar-widget-input" type="text" placeholder="Ask me anything..." />
@@ -365,11 +522,6 @@ export class AvatarWidget {
         this._setStatus("Listening...", "speaking");
       }
     };
-
-    this.client.on("speaking", () => this._setStatus("Speaking...", "speaking"));
-    this.client.on("ended", () => this._setStatus("Online ✓", "ok"));
-    this.client.on("interrupted", () => this._setStatus("Interrupted", ""));
-    this.client.on("error", ({ message }) => this._setStatus(`Error: ${message}`, "error"));
   }
 
   private _escape(str: string): string {
@@ -378,7 +530,12 @@ export class AvatarWidget {
 
   /** Destroy widget and clean up DOM */
   async destroy(): Promise<void> {
-    await this.client.destroy();
+    if (this.peerConnection) {
+      try { this.peerConnection.close(); } catch(e){}
+    }
+    if (this.client) {
+      await this.client.destroy();
+    }
     this.rootEl.remove();
   }
 }
@@ -388,7 +545,7 @@ export class AvatarWidget {
  * ```typescript
  * import { createAvatarWidget } from "@avatar-sdk/client";
  *
- * createAvatarWidget({ target: "#my-slot", avatar: "emma" });
+ * createAvatarWidget({ target: "#my-slot", engine: "d-id", avatar: "emma" });
  * ```
  */
 export function createAvatarWidget(options?: AvatarWidgetOptions): AvatarWidget {
