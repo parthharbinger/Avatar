@@ -18,30 +18,33 @@ from app.viseme.models import VisemeEvent, VisemeShape
 # Average speaking rate: ~13 characters per second = ~77ms per character
 _MS_PER_CHAR = 77
 
-# Character → Viseme lookup table (covers all common English phonemes)
+# Character / sub-phoneme → Viseme lookup table
 _CHAR_TO_VISEME: dict[str, VisemeShape] = {
     # Open vowels
-    "a": VisemeShape.OPEN, "e": VisemeShape.OPEN,
-    # Round vowels
-    "o": VisemeShape.ROUND, "u": VisemeShape.ROUND,
-    # Bilabial (lips close)
+    "a": VisemeShape.OPEN, "e": VisemeShape.OPEN, "i": VisemeShape.OPEN,
+    # Round vowels & approximants
+    "o": VisemeShape.ROUND, "u": VisemeShape.ROUND, "w": VisemeShape.ROUND, "q": VisemeShape.ROUND,
+    # Bilabial (lips touch / press)
     "m": VisemeShape.BILABIAL, "b": VisemeShape.BILABIAL, "p": VisemeShape.BILABIAL,
-    # Labiodental
+    # Labiodental (lower lip to upper teeth)
     "f": VisemeShape.LABIODENTAL, "v": VisemeShape.LABIODENTAL,
-    # Dental / alveolar
+    # Dental / alveolar / fricatives
     "l": VisemeShape.DENTAL, "n": VisemeShape.DENTAL, "t": VisemeShape.DENTAL,
     "d": VisemeShape.DENTAL, "s": VisemeShape.DENTAL, "z": VisemeShape.DENTAL,
-    "r": VisemeShape.DENTAL, "th": VisemeShape.DENTAL,
+    "r": VisemeShape.DENTAL, "c": VisemeShape.DENTAL, "k": VisemeShape.OPEN,
+    "g": VisemeShape.OPEN, "j": VisemeShape.DENTAL, "x": VisemeShape.DENTAL,
+    "y": VisemeShape.OPEN, "h": VisemeShape.OPEN,
     # Space / punctuation → neutral
     " ": VisemeShape.NEUTRAL, ",": VisemeShape.NEUTRAL,
     ".": VisemeShape.NEUTRAL, "!": VisemeShape.NEUTRAL,
     "?": VisemeShape.NEUTRAL, ";": VisemeShape.NEUTRAL,
+    ":": VisemeShape.NEUTRAL, "-": VisemeShape.NEUTRAL,
 }
 
 
 def map_text_to_visemes(text: str, start_offset_ms: int = 0) -> List[VisemeEvent]:
     """
-    Estimate a viseme timeline from plain text.
+    Estimate a viseme timeline from plain text when no word boundaries are available.
 
     Args:
         text: The text being spoken.
@@ -65,11 +68,60 @@ def map_text_to_visemes(text: str, start_offset_ms: int = 0) -> List[VisemeEvent
     return events
 
 
+def from_word_boundaries(
+    word_boundaries: List[tuple[str, float, float]], start_offset_ms: int = 0
+) -> List[VisemeEvent]:
+    """
+    Build an ultra-precise viseme timeline from TTS WordBoundary metadata.
+
+    Args:
+        word_boundaries: List of (word_text, offset_ms, duration_ms) tuples.
+        start_offset_ms: Global start time offset.
+
+    Returns:
+        Chronologically sorted list of VisemeEvents matching exact speech timings.
+    """
+    if not word_boundaries:
+        return [VisemeEvent(time_ms=start_offset_ms, shape=VisemeShape.NEUTRAL)]
+
+    events: List[VisemeEvent] = []
+    last_end_ms = start_offset_ms
+
+    for word_text, offset_ms, duration_ms in word_boundaries:
+        clean = "".join(c for c in word_text.lower() if c.isalnum())
+        if not clean:
+            continue
+
+        word_start = offset_ms + start_offset_ms
+        # If there is a natural pause (> 40ms) between words, close mouth
+        if word_start > last_end_ms + 40:
+            if not events or events[-1].shape != VisemeShape.NEUTRAL:
+                events.append(VisemeEvent(time_ms=int(last_end_ms), shape=VisemeShape.NEUTRAL))
+
+        # Distribute word duration across its constituent letters
+        char_dur = duration_ms / max(1, len(clean))
+        for i, char in enumerate(clean):
+            t = int(word_start + (i * char_dur))
+            shape = _CHAR_TO_VISEME.get(char, VisemeShape.OPEN)
+            if not events or events[-1].shape != shape:
+                events.append(VisemeEvent(time_ms=t, shape=shape))
+
+        last_end_ms = word_start + duration_ms
+
+    # Close mouth at completion
+    if events:
+        events.append(VisemeEvent(time_ms=int(last_end_ms), shape=VisemeShape.NEUTRAL))
+    else:
+        events.append(VisemeEvent(time_ms=start_offset_ms, shape=VisemeShape.NEUTRAL))
+
+    return events
+
+
 def from_alignment_data(
     alignment: List[dict], start_offset_ms: int = 0
 ) -> List[VisemeEvent]:
     """
-    Build a viseme timeline from ElevenLabs character alignment data.
+    Build a viseme timeline from character alignment data.
 
     Args:
         alignment: List of {"character": str, "start_time": float (seconds)} dicts.

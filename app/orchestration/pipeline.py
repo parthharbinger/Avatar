@@ -24,58 +24,66 @@ async def run_speech_pipeline(
     websocket: WebSocket,
     text: str,
     speech_id: Optional[str] = None,
+    voice: Optional[str] = None,
 ) -> None:
     """
     Full TTS → Viseme → Stream pipeline for one speech turn.
-
-    Sends the following WebSocket JSON messages in order:
-      1. {"type": "start", "speech_id": "..."}
-      2. {"type": "viseme_timeline", "events": [...], "speech_id": "..."}
-      3. {"type": "audio_chunk", "data": "<base64>", "chunk_index": N, "speech_id": "..."}
-         (repeated for each chunk)
-      4. {"type": "end", "speech_id": "..."} on success
-         OR {"type": "interrupted", "speech_id": "..."} on cancellation
-
-    Args:
-        websocket: The active WebSocket connection.
-        text: The text to speak.
-        speech_id: Optional ID for this speech turn (auto-generated if not provided).
     """
     speech_id = speech_id or str(uuid.uuid4())
     tts = get_tts_adapter()
 
     logger.info(
         "Pipeline started",
-        extra={"event": "pipeline_start", "speech_id": speech_id, "text_len": len(text)},
+        extra={"event": "pipeline_start", "speech_id": speech_id, "text_len": len(text), "voice": voice},
     )
 
     try:
         # 1. Signal start
         await websocket.send_json({"type": "start", "speech_id": speech_id})
 
-        # 2. Pre-compute viseme timeline and send it ahead of audio
-        #    The client receives this before any audio so it can pre-load the animation.
-        viseme_events = map_text_to_visemes(text)
-        await websocket.send_json({
-            "type": "viseme_timeline",
-            "speech_id": speech_id,
-            "events": [e.to_dict() for e in viseme_events],
-        })
+        # 2. Check if adapter supports streaming with WordBoundaries (EdgeTTS)
+        if hasattr(tts, "stream_speech_with_boundaries"):
+            word_boundaries = []
+            async for item in tts.stream_speech_with_boundaries(text, voice=voice):
+                item_type = item["type"]
+                if item_type == "word_boundary":
+                    word_boundaries.append((item["word"], item["offset_ms"], item["duration_ms"]))
+                elif item_type == "audio":
+                    encoded = base64.b64encode(item["data"]).decode("utf-8")
+                    await websocket.send_json({
+                        "type": "audio_chunk",
+                        "speech_id": speech_id,
+                        "chunk_index": item["chunk_index"],
+                        "data": encoded,
+                    })
 
-        # 3. Stream audio chunks
-        async for chunk in tts.stream_speech(text):
-            if chunk.is_final:
-                break
-            # Encode binary audio as base64 for JSON transport
-            encoded = base64.b64encode(chunk.data).decode("utf-8")
+            # Emit exact viseme timeline computed from audio word boundaries
+            viseme_events = from_word_boundaries(word_boundaries)
             await websocket.send_json({
-                "type": "audio_chunk",
+                "type": "viseme_timeline",
                 "speech_id": speech_id,
-                "chunk_index": chunk.chunk_index,
-                "data": encoded,
+                "events": [e.to_dict() for e in viseme_events],
             })
+        else:
+            # Fallback for generic TTS
+            viseme_events = map_text_to_visemes(text)
+            await websocket.send_json({
+                "type": "viseme_timeline",
+                "speech_id": speech_id,
+                "events": [e.to_dict() for e in viseme_events],
+            })
+            async for chunk in tts.stream_speech(text):
+                if chunk.is_final:
+                    break
+                encoded = base64.b64encode(chunk.data).decode("utf-8")
+                await websocket.send_json({
+                    "type": "audio_chunk",
+                    "speech_id": speech_id,
+                    "chunk_index": chunk.chunk_index,
+                    "data": encoded,
+                })
 
-        # 4. Signal end
+        # 3. Signal end
         await websocket.send_json({"type": "end", "speech_id": speech_id})
         logger.info(
             "Pipeline complete",

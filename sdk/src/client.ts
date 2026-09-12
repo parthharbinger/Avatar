@@ -114,12 +114,18 @@ export class AvatarClient {
   }
 
   /**
-   * Mount the 2D avatar canvas into a container element.
+   * Mount the avatar canvas into a container element.
    * @param container - Any HTML element to render the avatar inside.
+   * @param imageSrc - Optional URL to a custom avatar portrait image.
    */
-  mount(container: HTMLElement): void {
+  mount(container: HTMLElement, imageSrc?: string): void {
     if (this.renderer) this.renderer.destroy();
-    this.renderer = new Renderer2D(container);
+    this.renderer = new Renderer2D(container, imageSrc);
+  }
+
+  /** Change the avatar portrait image at runtime */
+  setAvatarImage(src: string): void {
+    this.renderer?.setImage(src);
   }
 
   // ─── Speech Control ────────────────────────────────────────────────────────
@@ -128,13 +134,14 @@ export class AvatarClient {
    * Send text to the avatar to speak.
    * If the avatar is currently speaking, it will be interrupted first (barge-in).
    * @param text - The text string to speak.
+   * @param options - Optional speech options like voice selection.
    */
-  speak(text: string): void {
+  speak(text: string, options?: { voice?: string }): void {
     if (!this.transport?.isOpen) {
       throw new Error("Not connected. Call connect() first.");
     }
     this.speakCalledAt = performance.now();
-    this.transport.send({ action: "speak", text });
+    this.transport.send({ action: "speak", text, voice: options?.voice });
   }
 
   /**
@@ -150,7 +157,7 @@ export class AvatarClient {
 
   // ─── Message Handling ──────────────────────────────────────────────────────
 
-  private _handleMessage(msg: ServerMessage): void {
+  private async _handleMessage(msg: ServerMessage): Promise<void> {
     switch (msg.type) {
       case "connected":
         this._emit("connected", { sessionId: msg.session_id ?? "" });
@@ -176,12 +183,17 @@ export class AvatarClient {
             console.info(`[AvatarSDK] TTFF: ${ttff.toFixed(0)}ms`);
             this.speakCalledAt = 0;
           }
-          this.audio?.enqueueChunk(msg.data);
+          await this.audio?.enqueueChunk(msg.data);
         }
         break;
 
       case "end":
-        this.renderer?.stopAnimation();
+        if (this.audio) {
+          await this.audio.finishSpeech();
+          if (this.renderer) {
+            this.renderer.startAnimation(this.audio);
+          }
+        }
         this._emit("ended", { speechId: msg.speech_id ?? "" });
         break;
 

@@ -67,6 +67,7 @@ async def avatar_stream(websocket: WebSocket, session_id: str):
 
             if action == "speak":
                 text = message.get("text", "").strip()
+                voice = message.get("voice")
                 if not text:
                     await websocket.send_json({"type": "error", "message": "text field is required for speak action."})
                     continue
@@ -82,7 +83,7 @@ async def avatar_stream(websocket: WebSocket, session_id: str):
                 # Start a new speech pipeline as a cancellable background task
                 await session_manager.update_state(session_id, SessionState.SPEAKING)
                 active_task = asyncio.create_task(
-                    run_speech_pipeline(websocket, text)
+                    run_speech_pipeline(websocket, text, voice=voice)
                 )
 
                 # Callback to update state when task completes naturally
