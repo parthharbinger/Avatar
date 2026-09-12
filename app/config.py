@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_tts_voice: str = "alloy"
 
+    # Avatar Video Providers (Optional 3rd-party photorealistic WebRTC streaming)
+    avatar_provider: str = "edge-tts"  # 'edge-tts' (2D Canvas $0) | 'd-id' (WebRTC) | 'heygen' (WebRTC)
+    did_api_key: str = ""
+    did_source_url: str = "https://raw.githubusercontent.com/d-id/create-stream-webrtc/main/emma.png"
+    heygen_api_key: str = ""
+    heygen_avatar_id: str = "default"
+
     # ASR (optional)
     groq_api_key: str = ""
 

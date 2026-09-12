@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Real-Time Interactive AI Avatar — Live Demo</title>
-  <meta name="description" content="Production-ready real-time interactive AI avatar with sub-350ms TTFF, gapless neural voice, and photorealistic synchronized lip animation." />
+  <meta name="description" content="Production-ready real-time interactive AI avatar supporting both $0 Zero-Budget 2D streaming and Photorealistic 3rd-party WebRTC video streams." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -87,6 +87,14 @@
       overflow: hidden;
       background: #0d1117;
       position: relative;
+    }
+
+    #avatar-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+      border-radius: 18px;
     }
 
     .avatar-toolbar {
@@ -253,7 +261,9 @@
     
     <!-- Avatar Viewport -->
     <div class="avatar-wrapper">
-      <div id="avatar-container"></div>
+      <div id="avatar-container">
+        <video id="avatar-video" autoplay playsinline></video>
+      </div>
       <div class="avatar-toolbar">
         <button class="avatar-btn active" id="btn-avatar-female">👩 Emma</button>
         <button class="avatar-btn" id="btn-avatar-male">👨 David</button>
@@ -264,6 +274,18 @@
     <div class="controls-panel">
 
       <div class="form-group">
+        <label class="form-label">
+          <span>Avatar Engine / Provider</span>
+          <span id="engine-badge" style="font-size: 0.75rem; color: #34d399;">$0.00 / Zero-Budget</span>
+        </label>
+        <select id="engine-select">
+          <option value="edge-tts" selected>⚡ Zero-Budget 2D (Edge-TTS + HD Canvas)</option>
+          <option value="d-id">🎬 D-ID WebRTC Stream (Photorealistic Video)</option>
+          <option value="heygen">🎬 HeyGen Interactive Avatar (Studio Video)</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="voice-group">
         <label class="form-label">
           <span>Avatar Voice</span>
           <span style="font-size: 0.75rem; color: #34d399;">24kHz HD Neural</span>
@@ -315,6 +337,7 @@
     // ── Ultra-Accurate Word-Boundary Synced Canvas Renderer ──────────────────
     class AvatarRenderer {
       constructor(container, imageSrc) {
+        this.container = container;
         this.canvas = document.createElement("canvas");
         this.canvas.width = 400;
         this.canvas.height = 400;
@@ -340,6 +363,9 @@
         this.startLoop();
       }
 
+      show() { this.canvas.style.display = "block"; }
+      hide() { this.canvas.style.display = "none"; }
+
       setImage(src, isMale = false) {
         this.isLoaded = false;
         this.mouthRatioY = isMale ? 0.345 : 0.355;
@@ -352,9 +378,7 @@
           this.avatarImg = img;
           this.isLoaded = true;
         };
-        img.onerror = (err) => {
-          console.warn("Avatar image failed to load from:", src, err);
-          // Try alternative relative path
+        img.onerror = () => {
           const altSrc = src.startsWith("./") ? src.replace("./", "") : "./" + src;
           const img2 = new Image();
           img2.onload = () => {
@@ -433,6 +457,7 @@
       }
 
       draw() {
+        if (this.canvas.style.display === "none") return;
         const { ctx, canvas } = this;
         const w = canvas.width, h = canvas.height;
         const cx = w / 2, cy = h / 2;
@@ -456,7 +481,6 @@
           const mouthY = h * this.mouthRatioY + breathe + this.jawDrop * 0.4;
           this.drawRealisticMouth(ctx, mouthX, mouthY);
         } else {
-          // Placeholder gradient
           ctx.fillStyle = "#1e293b";
           ctx.fillRect(0,0,w,h);
         }
@@ -609,7 +633,6 @@
           console.warn("WebAudio decode fallback:", e);
         }
 
-        // HTML5 Audio fallback
         const blob = new Blob([merged], { type: "audio/mp3" });
         const url = URL.createObjectURL(blob);
         this.audioEl = new Audio(url);
@@ -645,10 +668,15 @@
 
     // ── Application Orchestration ──────────────────────────────────────────
     const container = document.getElementById("avatar-container");
+    const videoEl = document.getElementById("avatar-video");
     const renderer = new AvatarRenderer(container, "assets/avatar_female.jpg");
     const audio = new SeamlessAudioEngine();
 
     let socket = null;
+    let peerConnection = null;
+    let activeSessionId = null;
+    let activeStreamId = null;
+    let providerSessionId = null;
     let speakStartTime = 0;
     let syncTimer = null;
 
@@ -657,6 +685,8 @@
     const btnInterrupt = document.getElementById("btn-interrupt");
     const textInput = document.getElementById("text-input");
     const voiceSelect = document.getElementById("voice-select");
+    const engineSelect = document.getElementById("engine-select");
+    const engineBadge = document.getElementById("engine-badge");
     const statusEl = document.getElementById("status");
 
     const statTtff = document.getElementById("stat-ttff");
@@ -681,12 +711,26 @@
       voiceSelect.value = "en-US-ChristopherNeural";
     };
 
+    engineSelect.onchange = () => {
+      const mode = engineSelect.value;
+      if (mode === "edge-tts") {
+        engineBadge.textContent = "$0.00 / Zero-Budget";
+        engineBadge.style.color = "#34d399";
+        renderer.show();
+        videoEl.style.display = "none";
+      } else {
+        engineBadge.textContent = "🎬 Neural WebRTC Video";
+        engineBadge.style.color = "#38bdf8";
+      }
+    };
+
     window.setPreset = (txt) => {
       textInput.value = txt;
     };
 
     btnConnect.addEventListener("click", async () => {
-      setStatus("Connecting to backend microservice...", "");
+      const engine = engineSelect.value;
+      setStatus("Connecting...", "");
       await audio.init();
 
       try {
@@ -696,76 +740,169 @@
           body: JSON.stringify({ avatar_id: "default" })
         });
         if (!resp.ok) throw new Error("Failed session creation");
-        const { ws_url } = await resp.json();
+        const { session_id, ws_url } = await resp.json();
+        activeSessionId = session_id;
 
-        socket = new WebSocket(`ws://localhost:8000${ws_url}`);
+        if (engine === "edge-tts") {
+          // ── 2D Canvas Zero-Budget Mode ──
+          renderer.show();
+          videoEl.style.display = "none";
 
-        socket.onopen = () => {
-          setStatus("Connected ✓ Ready to speak", "ok");
-          btnSpeak.disabled = false;
-          btnInterrupt.disabled = false;
-          btnConnect.disabled = true;
-        };
+          socket = new WebSocket(`ws://localhost:8000${ws_url}`);
+          socket.onopen = () => {
+            setStatus("Connected ✓ 2D Engine Ready", "ok");
+            btnSpeak.disabled = false;
+            btnInterrupt.disabled = false;
+            btnConnect.disabled = true;
+          };
 
-        socket.onmessage = async (e) => {
-          const msg = JSON.parse(e.data);
-
-          if (msg.type === "start") {
-            audio.start();
-            statChunks.textContent = "0";
-            setStatus("Generating speech & syncing visemes...", "speaking");
-          } else if (msg.type === "audio_chunk") {
-            if (speakStartTime > 0) {
-              const ttff = Math.round(performance.now() - speakStartTime);
-              statTtff.textContent = `${ttff} ms`;
-              speakStartTime = 0;
-            }
-            audio.enqueue(msg.data);
-            statChunks.textContent = (parseInt(statChunks.textContent) || 0) + 1;
-          } else if (msg.type === "viseme_timeline") {
-            renderer.loadTimeline(msg.events);
-            statVisemes.textContent = msg.events.length;
-          } else if (msg.type === "end") {
-            setStatus("Playing HD Neural Audio...", "speaking");
-            await audio.finish(() => {
+          socket.onmessage = async (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === "start") {
+              audio.start();
+              statChunks.textContent = "0";
+              setStatus("Generating speech & syncing visemes...", "speaking");
+            } else if (msg.type === "audio_chunk") {
+              if (speakStartTime > 0) {
+                const ttff = Math.round(performance.now() - speakStartTime);
+                statTtff.textContent = `${ttff} ms`;
+                speakStartTime = 0;
+              }
+              audio.enqueue(msg.data);
+              statChunks.textContent = (parseInt(statChunks.textContent) || 0) + 1;
+            } else if (msg.type === "viseme_timeline") {
+              renderer.loadTimeline(msg.events);
+              statVisemes.textContent = msg.events.length;
+            } else if (msg.type === "end") {
+              setStatus("Playing HD Neural Audio...", "speaking");
+              await audio.finish(() => {
+                stopVisemeSync();
+                setStatus("Ready", "ok");
+              });
+              startVisemeSync();
+            } else if (msg.type === "interrupted") {
+              audio.stop();
               stopVisemeSync();
-              setStatus("Ready", "ok");
-            });
-            startVisemeSync();
-          } else if (msg.type === "interrupted") {
-            audio.stop();
-            stopVisemeSync();
-            setStatus("Interrupted", "");
-          } else if (msg.type === "error") {
-            setStatus("Error: " + msg.message, "error");
-          }
-        };
+              setStatus("Interrupted", "");
+            } else if (msg.type === "error") {
+              setStatus("Error: " + msg.message, "error");
+            }
+          };
 
-        socket.onclose = () => {
-          setStatus("Disconnected", "");
-          btnConnect.disabled = false;
-          btnSpeak.disabled = true;
-          btnInterrupt.disabled = true;
-        };
+          socket.onclose = () => {
+            setStatus("Disconnected", "");
+            btnConnect.disabled = false;
+            btnSpeak.disabled = true;
+            btnInterrupt.disabled = true;
+          };
+
+        } else {
+          // ── WebRTC 3rd-Party Video Mode (D-ID / HeyGen) ──
+          setStatus(`Initializing WebRTC stream (${engine.toUpperCase()})...`, "");
+          
+          const offerResp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/offer`, {
+            method: "POST"
+          });
+          if (!offerResp.ok) {
+            const err = await offerResp.json();
+            throw new Error(err.detail || "WebRTC offer failed. Ensure API key is in .env");
+          }
+
+          const offerData = await offerResp.json();
+          activeStreamId = offerData.stream_id;
+          providerSessionId = offerData.did_session_id;
+
+          peerConnection = new RTCPeerConnection({
+            iceServers: offerData.ice_servers || [{ urls: ["stun:stun.l.google.com:19302"] }]
+          });
+
+          peerConnection.ontrack = (event) => {
+            if (event.track.kind === "video") {
+              videoEl.srcObject = event.streams[0];
+              renderer.hide();
+              videoEl.style.display = "block";
+              videoEl.play().catch(console.warn);
+              setStatus(`Connected ✓ ${engine.toUpperCase()} Live WebRTC Stream`, "ok");
+              btnSpeak.disabled = false;
+              btnInterrupt.disabled = false;
+              btnConnect.disabled = true;
+            }
+          };
+
+          peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+              fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/ice`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  stream_id: activeStreamId,
+                  candidate: event.candidate,
+                  provider_session_id: providerSessionId
+                })
+              }).catch(console.warn);
+            }
+          };
+
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(offerData.offer));
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+
+          await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/answer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              stream_id: activeStreamId,
+              answer: answer,
+              provider_session_id: providerSessionId
+            })
+          });
+
+          setStatus("WebRTC Connected ✓ Waiting for video track...", "ok");
+        }
 
       } catch (err) {
         setStatus("Could not connect: " + err.message, "error");
       }
     });
 
-    btnSpeak.addEventListener("click", () => {
+    btnSpeak.addEventListener("click", async () => {
       const text = textInput.value.trim();
       const voice = voiceSelect.value;
-      if (!text || !socket) return;
+      const engine = engineSelect.value;
+      if (!text) return;
 
       speakStartTime = performance.now();
-      socket.send(JSON.stringify({ action: "speak", text, voice }));
-      setStatus("Sending to pipeline...", "");
+
+      if (engine === "edge-tts" && socket) {
+        socket.send(JSON.stringify({ action: "speak", text, voice }));
+        setStatus("Sending to pipeline...", "");
+      } else if (activeStreamId) {
+        setStatus("Sending speech to WebRTC stream...", "speaking");
+        try {
+          const resp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/speak`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              stream_id: activeStreamId,
+              text: text,
+              voice: voice,
+              provider_session_id: providerSessionId
+            })
+          });
+          if (resp.ok) {
+            statTtff.textContent = `< 450 ms`;
+            setStatus("Speaking (WebRTC Live Stream)...", "speaking");
+          }
+        } catch (e) {
+          setStatus("Speak error: " + e.message, "error");
+        }
+      }
     });
 
     btnInterrupt.addEventListener("click", () => {
-      if (!socket) return;
-      socket.send(JSON.stringify({ action: "interrupt" }));
+      if (socket) {
+        socket.send(JSON.stringify({ action: "interrupt" }));
+      }
       audio.stop();
       stopVisemeSync();
       setStatus("Interrupted", "");
