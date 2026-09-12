@@ -19,13 +19,13 @@ class DIDAvatarProvider(BaseAvatarProvider):
     """
 
     BASE_URL = "https://api.d-id.com"
+    _stream_sessions: Dict[str, str] = {}
 
     def __init__(self) -> None:
         self.api_key = settings.did_api_key
         self.source_url = settings.did_source_url
 
     def _get_headers(self) -> Dict[str, str]:
-        # D-ID expects Basic auth or raw key
         if ":" in self.api_key:
             auth_bytes = base64.b64encode(self.api_key.encode("utf-8")).decode("utf-8")
             auth_header = f"Basic {auth_bytes}"
@@ -63,20 +63,26 @@ class DIDAvatarProvider(BaseAvatarProvider):
                     raise RuntimeError(f"D-ID API error: {resp.status} - {err_text}")
 
                 data = await resp.json()
+                stream_id = data.get("id")
+                did_session_id = data.get("session_id")
+                if stream_id and did_session_id:
+                    self._stream_sessions[stream_id] = did_session_id
+
                 return {
                     "provider": "d-id",
-                    "stream_id": data.get("id"),
+                    "stream_id": stream_id,
                     "offer": data.get("offer"),
                     "ice_servers": data.get("ice_servers", []),
-                    "did_session_id": data.get("session_id"),
+                    "did_session_id": did_session_id,
                 }
 
     async def start_stream(self, stream_id: str, answer_sdp: Dict[str, Any], session_id: str) -> None:
         """Submit WebRTC answer SDP to D-ID to establish P2P connection."""
         url = f"{self.BASE_URL}/talks/streams/{stream_id}/sdp"
+        did_session = self._stream_sessions.get(stream_id) or session_id
         payload = {
             "answer": answer_sdp,
-            "session_id": session_id,
+            "session_id": did_session,
         }
 
         async with aiohttp.ClientSession() as session:
@@ -89,11 +95,12 @@ class DIDAvatarProvider(BaseAvatarProvider):
     async def submit_ice_candidate(self, stream_id: str, candidate: Dict[str, Any], session_id: str) -> None:
         """Submit ICE candidate to D-ID."""
         url = f"{self.BASE_URL}/talks/streams/{stream_id}/ice"
+        did_session = self._stream_sessions.get(stream_id) or session_id
         payload = {
             "candidate": candidate.get("candidate"),
             "sdpMid": candidate.get("sdpMid"),
             "sdpMLineIndex": candidate.get("sdpMLineIndex"),
-            "session_id": session_id,
+            "session_id": did_session,
         }
 
         async with aiohttp.ClientSession() as session:
@@ -106,6 +113,7 @@ class DIDAvatarProvider(BaseAvatarProvider):
         """Send speech text to D-ID talking avatar."""
         url = f"{self.BASE_URL}/talks/streams/{stream_id}"
         voice_id = voice or "en-US-JennyNeural"
+        did_session = session_id or self._stream_sessions.get(stream_id)
 
         payload = {
             "script": {
@@ -117,7 +125,7 @@ class DIDAvatarProvider(BaseAvatarProvider):
                 },
             },
             "driver_url": "bank://lively",
-            "session_id": session_id,
+            "session_id": did_session,
         }
 
         async with aiohttp.ClientSession() as session:
@@ -129,7 +137,6 @@ class DIDAvatarProvider(BaseAvatarProvider):
 
     async def interrupt(self, stream_id: str, session_id: Optional[str] = None) -> None:
         """Interrupt current speech in D-ID."""
-        # D-ID automatically handles speech queueing / interruption
         pass
 
     async def close_stream(self, stream_id: str, session_id: Optional[str] = None) -> None:
@@ -137,10 +144,13 @@ class DIDAvatarProvider(BaseAvatarProvider):
         if not stream_id:
             return
         url = f"{self.BASE_URL}/talks/streams/{stream_id}"
-        payload = {"session_id": session_id} if session_id else {}
+        did_session = session_id or self._stream_sessions.get(stream_id)
+        payload = {"session_id": did_session} if did_session else {}
 
         try:
             async with aiohttp.ClientSession() as session:
                 await session.delete(url, json=payload, headers=self._get_headers())
         except Exception as e:
             logger.warning(f"Error closing D-ID stream: {e}")
+        finally:
+            self._stream_sessions.pop(stream_id, None)

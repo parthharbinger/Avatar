@@ -843,6 +843,15 @@
             }
           };
 
+          peerConnection.onconnectionstatechange = () => {
+            console.log("WebRTC connectionState:", peerConnection.connectionState);
+            if (peerConnection.connectionState === "disconnected" || peerConnection.connectionState === "failed" || peerConnection.connectionState === "closed") {
+              setStatus("Stream idle/closed. Click Connect to restart.", "");
+              btnConnect.disabled = false;
+              btnSpeak.disabled = true;
+            }
+          };
+
           await peerConnection.setRemoteDescription(new RTCSessionDescription(offerData.offer));
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
@@ -862,6 +871,7 @@
 
       } catch (err) {
         setStatus("Could not connect: " + err.message, "error");
+        btnConnect.disabled = false;
       }
     });
 
@@ -892,6 +902,10 @@
           if (resp.ok) {
             statTtff.textContent = `< 450 ms`;
             setStatus("Speaking (WebRTC Live Stream)...", "speaking");
+          } else {
+            const err = await resp.json();
+            setStatus("Stream idle/expired. Click Connect to refresh session.", "error");
+            btnConnect.disabled = false;
           }
         } catch (e) {
           setStatus("Speak error: " + e.message, "error");
