@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Real-Time Interactive AI Avatar — Live Demo</title>
-  <meta name="description" content="Production-ready real-time interactive AI avatar supporting both $0 Zero-Budget 2D streaming and Photorealistic 3rd-party WebRTC video streams." />
+  <title>Real-Time Interactive AI Avatar — Live Conversational Demo</title>
+  <meta name="description" content="Production-ready real-time interactive AI avatar supporting voice input, LLM conversation, $0 Zero-Budget 2D streaming, and Photorealistic WebRTC video." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -21,7 +21,7 @@
       font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
       color: #f1f5f9;
       padding: 32px 20px;
-      gap: 28px;
+      gap: 24px;
     }
 
     .header-badge {
@@ -62,18 +62,18 @@
     .main-stage {
       display: flex;
       flex-direction: row;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
-      gap: 40px;
+      gap: 36px;
       width: 100%;
-      max-width: 980px;
+      max-width: 1020px;
       flex-wrap: wrap;
     }
 
     .avatar-wrapper {
       position: relative;
-      width: 340px;
-      height: 340px;
+      width: 360px;
+      height: 360px;
       border-radius: 24px;
       padding: 6px;
       background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.03));
@@ -132,25 +132,25 @@
     .controls-panel {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
       width: 100%;
-      max-width: 480px;
+      max-width: 500px;
       background: rgba(30, 41, 59, 0.6);
       backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 20px;
-      padding: 24px;
+      padding: 22px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
 
     .form-group {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
 
     .form-label {
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 600;
       color: #94a3b8;
       display: flex;
@@ -159,13 +159,13 @@
 
     select, textarea {
       width: 100%;
-      padding: 12px 14px;
+      padding: 10px 12px;
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,0.12);
       background: rgba(15, 23, 42, 0.6);
       color: #f8fafc;
       font-family: inherit;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
@@ -175,17 +175,54 @@
       box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
     }
 
+    .input-row {
+      display: flex;
+      gap: 8px;
+      position: relative;
+    }
+
+    .mic-btn {
+      padding: 0 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.06);
+      color: #f1f5f9;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .mic-btn:hover {
+      background: rgba(99, 102, 241, 0.25);
+      border-color: #6366f1;
+    }
+
+    .mic-btn.listening {
+      background: #ef4444;
+      border-color: #f87171;
+      animation: pulse 1.2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+      70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
     .chips-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
     }
 
     .chip {
       font-size: 0.75rem;
       background: rgba(255,255,255,0.06);
       border: 1px solid rgba(255,255,255,0.1);
-      padding: 4px 10px;
+      padding: 4px 8px;
       border-radius: 8px;
       color: #cbd5e1;
       cursor: pointer;
@@ -198,24 +235,24 @@
 
     .btn-row {
       display: flex;
-      gap: 10px;
-      margin-top: 4px;
+      gap: 8px;
+      margin-top: 2px;
     }
 
     button.action-btn {
       flex: 1;
-      padding: 12px 16px;
+      padding: 11px 14px;
       border: none;
       border-radius: 12px;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      transition: transform 0.1s, opacity 0.2s, filter 0.2s;
+      gap: 6px;
+      transition: transform 0.1s, opacity 0.2s;
     }
 
     button.action-btn:active { transform: scale(0.98); }
@@ -225,13 +262,43 @@
     #btn-speak   { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
     #btn-interrupt { background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; }
 
+    /* Chat log display */
+    .chat-history {
+      max-height: 110px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(15, 23, 42, 0.5);
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.8rem;
+    }
+
+    .chat-bubble {
+      padding: 4px 8px;
+      border-radius: 6px;
+      line-height: 1.3;
+    }
+    .chat-user {
+      align-self: flex-end;
+      background: rgba(99, 102, 241, 0.3);
+      color: #e0e7ff;
+    }
+    .chat-avatar {
+      align-self: flex-start;
+      background: rgba(255, 255, 255, 0.08);
+      color: #cbd5e1;
+    }
+
     .telemetry {
       display: flex;
       justify-content: space-between;
       background: rgba(15, 23, 42, 0.7);
-      padding: 10px 14px;
+      padding: 8px 12px;
       border-radius: 10px;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       color: #94a3b8;
       border: 1px solid rgba(255,255,255,0.05);
     }
@@ -241,9 +308,9 @@
     }
 
     #status {
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       text-align: center;
-      min-height: 20px;
+      min-height: 18px;
       font-weight: 500;
       color: #94a3b8;
     }
@@ -255,7 +322,7 @@
 <body>
 
   <div class="header-badge">Real-Time Interactive AI Avatar</div>
-  <h1>Live Lip-Synced Video & Audio Stream</h1>
+  <h1>Live Conversational Video & Audio Stream</h1>
 
   <div class="main-stage">
     
@@ -275,12 +342,23 @@
 
       <div class="form-group">
         <label class="form-label">
+          <span>Interaction Mode</span>
+          <span style="font-size: 0.75rem; color: #a78bfa;">Groq LLM + Whisper</span>
+        </label>
+        <select id="mode-select">
+          <option value="chatbot" selected>🤖 Conversational AI Chatbot (Avatar Thinks & Replies)</option>
+          <option value="tts">📢 Direct TTS (Avatar Speaks Exact Text)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
           <span>Avatar Engine / Provider</span>
-          <span id="engine-badge" style="font-size: 0.75rem; color: #34d399;">$0.00 / Zero-Budget</span>
+          <span id="engine-badge" style="font-size: 0.75rem; color: #38bdf8;">🎬 Neural WebRTC Video</span>
         </label>
         <select id="engine-select">
-          <option value="edge-tts" selected>⚡ Zero-Budget 2D (Edge-TTS + HD Canvas)</option>
-          <option value="d-id">🎬 D-ID WebRTC Stream (Photorealistic Video)</option>
+          <option value="d-id" selected>🎬 D-ID WebRTC Stream (Photorealistic Video)</option>
+          <option value="edge-tts">⚡ Zero-Budget 2D (Edge-TTS + HD Canvas)</option>
           <option value="heygen">🎬 HeyGen Interactive Avatar (Studio Video)</option>
         </select>
       </div>
@@ -301,31 +379,40 @@
 
       <div class="form-group">
         <div class="form-label">
-          <span>Speech Input</span>
+          <span id="input-label">Chat Message / Voice Input</span>
         </div>
-        <textarea
-          id="text-input"
-          rows="3"
-          placeholder="Type what you want the avatar to speak..."
-        >Hello! I am your real-time interactive AI avatar. Notice how my lips sync smoothly with my voice without any audio cracking.</textarea>
+        <div class="input-row">
+          <textarea
+            id="text-input"
+            rows="2"
+            placeholder="Type or click the microphone to talk..."
+          >Who are you and what can you do?</textarea>
+          <button class="mic-btn" id="btn-mic" title="Click to speak (Microphone)">🎙️</button>
+        </div>
       </div>
 
+      <!-- Quick Conversation Prompts -->
       <div class="chips-row">
-        <span class="chip" onclick="setPreset('Hello! How can I help you today?')">👋 Greeting</span>
-        <span class="chip" onclick="setPreset('Our platform delivers sub-350ms real-time talking avatars for any web application.')">⚡ Tech Demo</span>
-        <span class="chip" onclick="setPreset('Try interrupting me mid-sentence by pressing the red interrupt button!')">🛑 Barge-in Test</span>
+        <span class="chip" onclick="setPreset('Who are you and what can you do?')">🤖 Who are you?</span>
+        <span class="chip" onclick="setPreset('Tell me a short fun fact about space!')">🚀 Fun Fact</span>
+        <span class="chip" onclick="setPreset('How does your real-time streaming work?')">⚡ Architecture</span>
+      </div>
+
+      <!-- Live Chat Bubble History -->
+      <div class="chat-history" id="chat-history">
+        <div class="chat-bubble chat-avatar">🤖 <b>Avatar:</b> Hello! Ask me anything or click the microphone to talk.</div>
       </div>
 
       <div class="btn-row">
         <button class="action-btn" id="btn-connect">Connect</button>
-        <button class="action-btn" id="btn-speak" disabled>🎙️ Speak</button>
+        <button class="action-btn" id="btn-speak" disabled>💬 Send / Speak</button>
         <button class="action-btn" id="btn-interrupt" disabled>⏹️ Interrupt</button>
       </div>
 
       <div class="telemetry">
         <span>TTFF: <b id="stat-ttff">—</b></span>
         <span>Visemes: <b id="stat-visemes">0</b></span>
-        <span>Audio Chunks: <b id="stat-chunks">0</b></span>
+        <span>LLM: <b id="stat-llm">Ready</b></span>
       </div>
 
       <div id="status">Click Connect to start real-time session</div>
@@ -470,13 +557,11 @@
           ctx.drawImage(this.avatarImg, 0, breathe, w, h);
           ctx.restore();
 
-          // Blinking eyelids
           if (this.blinkVal > 0.05) {
             this.drawBlink(ctx, w * 0.455, h * this.eyeRatioY + breathe, 18, this.blinkVal);
             this.drawBlink(ctx, w * 0.545, h * this.eyeRatioY + breathe, 18, this.blinkVal);
           }
 
-          // Dynamic Realistic Mouth
           const mouthX = cx;
           const mouthY = h * this.mouthRatioY + breathe + this.jawDrop * 0.4;
           this.drawRealisticMouth(ctx, mouthX, mouthY);
@@ -517,7 +602,6 @@
         }
 
         ctx.save();
-        // Oral cavity
         ctx.beginPath();
         ctx.ellipse(x, y + openH * 0.2, baseW, Math.max(1, openH), 0, 0, Math.PI * 2);
         const cavity = ctx.createRadialGradient(x, y, 2, x, y, openH + 10);
@@ -526,7 +610,6 @@
         ctx.fillStyle = cavity;
         ctx.fill();
 
-        // Upper teeth
         if (this.mouthOpen > 0.15) {
           ctx.fillStyle = "rgba(245, 242, 238, 0.95)";
           ctx.beginPath();
@@ -534,7 +617,6 @@
           ctx.fill();
         }
 
-        // Tongue
         if (this.mouthOpen > 0.3) {
           ctx.beginPath();
           ctx.ellipse(x, y + openH * 0.55, baseW * 0.55, openH * 0.35, 0, 0, Math.PI);
@@ -542,7 +624,6 @@
           ctx.fill();
         }
 
-        // Upper lip
         ctx.beginPath();
         ctx.moveTo(x - baseW - 2, y);
         ctx.quadraticCurveTo(x - baseW * 0.4, y - openH * 0.4 - 2, x, y - openH * 0.25);
@@ -551,7 +632,6 @@
         ctx.fillStyle = "rgba(180, 80, 75, 0.9)";
         ctx.fill();
 
-        // Lower lip
         ctx.beginPath();
         ctx.moveTo(x - baseW - 2, y);
         ctx.quadraticCurveTo(x, y + openH + 5, x + baseW + 2, y);
@@ -568,7 +648,7 @@
       }
     }
 
-    // ── Gapless Neural Audio Engine ─────────────────────────────────────────
+    // ── Seamless Audio Engine ───────────────────────────────────────────────
     class SeamlessAudioEngine {
       constructor() {
         this.ctx = null;
@@ -666,7 +746,7 @@
       }
     }
 
-    // ── Application Orchestration ──────────────────────────────────────────
+    // ── Application State ───────────────────────────────────────────────────
     const container = document.getElementById("avatar-container");
     const videoEl = document.getElementById("avatar-video");
     const renderer = new AvatarRenderer(container, "assets/avatar_female.jpg");
@@ -679,21 +759,26 @@
     let providerSessionId = null;
     let speakStartTime = 0;
     let syncTimer = null;
+    let currentAvatarId = "female";
+    let chatHistory = [];
+    let isListening = false;
+    let recognition = null;
 
     const btnConnect = document.getElementById("btn-connect");
     const btnSpeak = document.getElementById("btn-speak");
     const btnInterrupt = document.getElementById("btn-interrupt");
+    const btnMic = document.getElementById("btn-mic");
     const textInput = document.getElementById("text-input");
     const voiceSelect = document.getElementById("voice-select");
     const engineSelect = document.getElementById("engine-select");
+    const modeSelect = document.getElementById("mode-select");
     const engineBadge = document.getElementById("engine-badge");
     const statusEl = document.getElementById("status");
+    const chatHistoryEl = document.getElementById("chat-history");
 
     const statTtff = document.getElementById("stat-ttff");
     const statVisemes = document.getElementById("stat-visemes");
-    const statChunks = document.getElementById("stat-chunks");
-
-    let currentAvatarId = "female";
+    const statLlm = document.getElementById("stat-llm");
 
     // Avatar identity buttons
     const btnFem = document.getElementById("btn-avatar-female");
@@ -742,6 +827,75 @@
       textInput.value = txt;
     };
 
+    // ── Speech Recognition (Microphone ASR) ─────────────────────────────────
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRec();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (e) => {
+        let transcript = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          transcript += e.results[i][0].transcript;
+        }
+        textInput.value = transcript;
+      };
+
+      recognition.onend = () => {
+        isListening = false;
+        btnMic.classList.remove('listening');
+        btnMic.textContent = '🎙️';
+        if (textInput.value.trim() && !btnSpeak.disabled) {
+          // Auto-send on finish speech in chatbot mode
+          if (modeSelect.value === 'chatbot') {
+            btnSpeak.click();
+          }
+        }
+      };
+
+      recognition.onerror = (err) => {
+        console.warn("Speech recognition error:", err);
+        isListening = false;
+        btnMic.classList.remove('listening');
+        btnMic.textContent = '🎙️';
+      };
+    }
+
+    btnMic.onclick = () => {
+      if (!recognition) {
+        alert("Speech Recognition is not supported by your browser. Please use Chrome/Edge or type your text.");
+        return;
+      }
+      if (isListening) {
+        recognition.stop();
+        isListening = false;
+        btnMic.classList.remove('listening');
+        btnMic.textContent = '🎙️';
+      } else {
+        textInput.value = '';
+        recognition.start();
+        isListening = true;
+        btnMic.classList.add('listening');
+        btnMic.textContent = '🔴';
+        setStatus("Listening to your voice...", "speaking");
+      }
+    };
+
+    function appendChat(role, text) {
+      const bubble = document.createElement("div");
+      bubble.className = `chat-bubble ${role === 'user' ? 'chat-user' : 'chat-avatar'}`;
+      bubble.innerHTML = role === 'user' ? `👤 <b>You:</b> ${escapeHtml(text)}` : `🤖 <b>Avatar:</b> ${escapeHtml(text)}`;
+      chatHistoryEl.appendChild(bubble);
+      chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // ── Connect Button ─────────────────────────────────────────────────────
     btnConnect.addEventListener("click", async () => {
       const engine = engineSelect.value;
       setStatus("Connecting...", "");
@@ -763,7 +917,6 @@
         activeSessionId = session_id;
 
         if (engine === "edge-tts") {
-          // ── 2D Canvas Zero-Budget Mode ──
           renderer.show();
           videoEl.style.display = "none";
 
@@ -779,7 +932,6 @@
             const msg = JSON.parse(e.data);
             if (msg.type === "start") {
               audio.start();
-              statChunks.textContent = "0";
               setStatus("Generating speech & syncing visemes...", "speaking");
             } else if (msg.type === "audio_chunk") {
               if (speakStartTime > 0) {
@@ -788,7 +940,6 @@
                 speakStartTime = 0;
               }
               audio.enqueue(msg.data);
-              statChunks.textContent = (parseInt(statChunks.textContent) || 0) + 1;
             } else if (msg.type === "viseme_timeline") {
               renderer.loadTimeline(msg.events);
               statVisemes.textContent = msg.events.length;
@@ -863,7 +1014,6 @@
           };
 
           peerConnection.onconnectionstatechange = () => {
-            console.log("WebRTC connectionState:", peerConnection.connectionState);
             if (peerConnection.connectionState === "disconnected" || peerConnection.connectionState === "failed" || peerConnection.connectionState === "closed") {
               setStatus("Stream idle/closed. Click Connect to restart.", "");
               btnConnect.disabled = false;
@@ -894,36 +1044,71 @@
       }
     });
 
+    // ── Send / Speak Button (Conversational LLM or Direct TTS) ───────────────
     btnSpeak.addEventListener("click", async () => {
-      const text = textInput.value.trim();
+      const userText = textInput.value.trim();
       const voice = voiceSelect.value;
       const engine = engineSelect.value;
-      if (!text) return;
+      const mode = modeSelect.value;
+      if (!userText) return;
+
+      let textToSpeak = userText;
+
+      // ── Conversational Mode: Query Groq LLM ──
+      if (mode === "chatbot") {
+        appendChat("user", userText);
+        textInput.value = "";
+        setStatus("Thinking (Groq LLM)...", "speaking");
+        statLlm.textContent = "Generating...";
+
+        try {
+          const chatResp = await fetch("http://localhost:8000/api/v1/chat/respond", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: userText,
+              history: chatHistory
+            })
+          });
+
+          if (!chatResp.ok) throw new Error("Failed to get LLM response");
+          const chatData = await chatResp.json();
+          textToSpeak = chatData.reply;
+          statLlm.textContent = "Done (<150ms)";
+          appendChat("assistant", textToSpeak);
+
+          chatHistory.push({ role: "user", content: userText });
+          chatHistory.push({ role: "assistant", content: textToSpeak });
+        } catch (err) {
+          setStatus("LLM error: " + err.message, "error");
+          statLlm.textContent = "Error";
+          return;
+        }
+      }
 
       speakStartTime = performance.now();
 
       if (engine === "edge-tts" && socket) {
-        socket.send(JSON.stringify({ action: "speak", text, voice }));
-        setStatus("Sending to pipeline...", "");
+        socket.send(JSON.stringify({ action: "speak", text: textToSpeak, voice }));
+        setStatus("Speaking...", "speaking");
       } else if (activeStreamId) {
-        setStatus("Sending speech to WebRTC stream...", "speaking");
+        setStatus("Speaking (WebRTC Live Stream)...", "speaking");
         try {
           const resp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/speak`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               stream_id: activeStreamId,
-              text: text,
+              text: textToSpeak,
               voice: voice,
               provider_session_id: providerSessionId
             })
           });
           if (resp.ok) {
             statTtff.textContent = `< 450 ms`;
-            setStatus("Speaking (WebRTC Live Stream)...", "speaking");
           } else {
             const err = await resp.json();
-            setStatus("Stream idle/expired. Click Connect to refresh session.", "error");
+            setStatus("Stream expired. Click Connect to refresh session.", "error");
             btnConnect.disabled = false;
           }
         } catch (e) {

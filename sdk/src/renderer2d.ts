@@ -33,7 +33,7 @@ export class Renderer2D {
   private mouthYRatio = 0.355;
   private eyeYRatio = 0.255;
 
-  constructor(container: HTMLElement, imageSrc: string = "assets/avatar_female.jpg") {
+  constructor(container: HTMLElement, imageSrc: string = "female") {
     this.canvas = document.createElement("canvas");
     this.canvas.width = 400;
     this.canvas.height = 400;
@@ -42,18 +42,35 @@ export class Renderer2D {
     container.appendChild(this.canvas);
 
     const ctx = this.canvas.getContext("2d");
-    if (!ctx) throw new Error("Cannot get 2D canvas context.");
+    if (!ctx) {
+      // Headless / jsdom mock fallback
+      this.ctx = {} as CanvasRenderingContext2D;
+      return;
+    }
     this.ctx = ctx;
 
     this.setImage(imageSrc);
     this._startIdleLoop();
   }
 
-  /** Set or change avatar portrait image */
-  setImage(src: string): void {
+  /** Set or change avatar portrait image (supports 'female'/'emma', 'male'/'david', or custom URL) */
+  setImage(src: string = "female"): void {
     this.isImgLoaded = false;
+    let resolvedSrc = src;
+    const lower = src.toLowerCase();
+
+    if (lower === "female" || lower === "emma" || lower === "default" || lower === "") {
+      resolvedSrc = "http://localhost:8000/assets/avatar_female.jpg";
+      this.mouthYRatio = 0.355;
+      this.eyeYRatio = 0.255;
+    } else if (lower === "male" || lower === "david" || lower === "adam") {
+      resolvedSrc = "http://localhost:8000/assets/avatar_male.jpg";
+      this.mouthYRatio = 0.345;
+      this.eyeYRatio = 0.250;
+    }
+
     const img = new Image();
-    if (src.startsWith("http://") || src.startsWith("https://")) {
+    if (resolvedSrc.startsWith("http://") || resolvedSrc.startsWith("https://")) {
       img.crossOrigin = "anonymous";
     }
     img.onload = () => {
@@ -62,11 +79,25 @@ export class Renderer2D {
       this._draw();
     };
     img.onerror = () => {
-      // Fallback to gradient if image fails to load
-      this.isImgLoaded = false;
-      this._draw();
+      // If server asset not reachable, try relative path
+      if (resolvedSrc.includes("/assets/")) {
+        const altImg = new Image();
+        altImg.onload = () => {
+          this.avatarImg = altImg;
+          this.isImgLoaded = true;
+          this._draw();
+        };
+        altImg.onerror = () => {
+          this.isImgLoaded = false;
+          this._draw();
+        };
+        altImg.src = resolvedSrc.replace("http://localhost:8000/", "./");
+      } else {
+        this.isImgLoaded = false;
+        this._draw();
+      }
     };
-    img.src = src;
+    img.src = resolvedSrc;
   }
 
   /** Load a new viseme timeline for an upcoming speech turn */

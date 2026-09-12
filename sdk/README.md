@@ -19,28 +19,50 @@ Or load from a CDN (UMD/ESM):
 
 ## Quick Start
 
+### Option A: 1-Line Drop-in Widget (Fastest)
+
+Drop a complete interactive talking AI avatar (with live voice mic, LLM chat, and lip-sync canvas) into any web app:
+
+```typescript
+import { createAvatarWidget } from "@avatar-sdk/client";
+
+// Mount directly into any HTML element (or use floating: true for bottom-right assistant)
+createAvatarWidget({
+  target: "#avatar-container",
+  serverUrl: "http://localhost:8000",
+  avatar: "emma", // built-in persona (no local assets needed!)
+  title: "AI Concierge",
+  welcomeMessage: "Hello! How can I help you today?",
+  systemPrompt: "You are a helpful and concise AI assistant.",
+});
+```
+
+### Option B: Headless SDK (Custom UI Architecture)
+
+For developers building a custom UI layout:
+
 ```typescript
 import { AvatarClient } from "@avatar-sdk/client";
 
-// 1. Create a client pointing at your deployed backend
+// 1. Create client
 const avatar = new AvatarClient({
   serverUrl: "ws://localhost:8000",
-  avatarId: "default",
+  avatarId: "female",
 });
 
-// 2. Connect (creates a session + opens WebSocket)
+// 2. Connect session
 await avatar.connect();
 
-// 3. Mount into any DOM element
+// 3. Mount canvas into any element
 avatar.mount(document.querySelector("#avatar-container")!);
 
-// 4. Speak!
+// 4. Speak
 avatar.speak("Hello! I am your real-time AI avatar.");
 
 // 5. Interrupt mid-speech (barge-in)
 avatar.interrupt();
 
-// 6. Clean up when done
+// 6. Clean up
 await avatar.destroy();
 ```
 

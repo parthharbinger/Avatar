@@ -43,7 +43,7 @@ class DIDAvatarProvider(BaseAvatarProvider):
         if not self.api_key:
             raise ValueError("DID_API_KEY is not configured in .env")
 
-        if avatar_id in ("male", "david", "adam"):
+        if avatar_id and str(avatar_id).lower() in ("male", "david", "adam"):
             src_url = "https://clips-presenters.d-id.com/v2/Adam/0GLJgELXjc/j0HIbyxjap/image.png"
         else:
             src_url = self.source_url or "https://clips-presenters.d-id.com/v2/Alyssa_NoHands_BlackShirt_Home/Mvn6Nalx90/y0J6MTfOaZ/image.png"

@@ -53,14 +53,25 @@ app.add_middleware(
 import os
 from fastapi.staticfiles import StaticFiles
 
+from app.api.conversation import router as conversation_router
+
 # Mount routers
 app.include_router(sessions_router)
 app.include_router(websocket_router)
+app.include_router(conversation_router)
 
-# Mount demo page and assets
-demo_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "demo")
+# Mount demo page, assets, and SDK dist
+base_dir = os.path.dirname(os.path.dirname(__file__))
+demo_dir = os.path.join(base_dir, "demo")
+assets_dir = os.path.join(demo_dir, "assets")
+sdk_dist_dir = os.path.join(base_dir, "sdk", "dist")
+
 if os.path.exists(demo_dir):
     app.mount("/demo", StaticFiles(directory=demo_dir, html=True), name="demo")
+if os.path.exists(assets_dir):
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+if os.path.exists(sdk_dist_dir):
+    app.mount("/sdk", StaticFiles(directory=sdk_dist_dir), name="sdk")
 
 
 @app.get("/health", tags=["Health"])
