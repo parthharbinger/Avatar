@@ -42,6 +42,6 @@ const concierge = createAvatarWidget({
 };
 
 // Expose engine switcher
-(window as any).switchEngine = (engine: "d-id" | "canvas") => {
+(window as any).switchEngine = (engine: "d-id" | "simli" | "anam" | "akool" | "heygen" | "canvas") => {
   concierge.setEngine(engine);
 };

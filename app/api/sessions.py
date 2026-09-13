@@ -69,8 +69,79 @@ async def get_session(session_id: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
 
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from app.avatar_providers import get_avatar_provider
+from app.config import settings
+
+
+@router.get(
+    "/providers",
+    summary="List all available avatar engines and API key configuration status",
+)
+async def list_providers():
+    """
+    Returns list of all supported avatar streaming engines, their latency tiers,
+    and whether their API key is currently detected and configured in .env.
+    """
+    return {
+        "active_default": settings.avatar_provider,
+        "providers": [
+            {
+                "id": "d-id",
+                "name": "D-ID",
+                "label": "🎬 D-ID (Photorealistic WebRTC Video)",
+                "type": "webrtc",
+                "configured": bool(settings.did_api_key and settings.did_api_key.strip()),
+                "latency": "< 450ms",
+                "description": "Photorealistic AI digital humans with natural expressions and head movement.",
+            },
+            {
+                "id": "anam",
+                "name": "Anam.ai",
+                "label": "🤖 Anam.ai (Digital Human WebRTC)",
+                "type": "webrtc",
+                "configured": bool(settings.anam_api_key and settings.anam_api_key.strip()),
+                "latency": "< 350ms",
+                "description": "Next-generation ultra-realistic conversational digital humans.",
+            },
+            {
+                "id": "simli",
+                "name": "Simli",
+                "label": "⚡ Simli (Ultra-Low Latency <300ms)",
+                "type": "webrtc",
+                "configured": bool(settings.simli_api_key and settings.simli_api_key.strip()),
+                "latency": "< 300ms",
+                "description": "Sub-second audio-to-video neural avatar rendering via WebRTC.",
+            },
+            {
+                "id": "akool",
+                "name": "Akool",
+                "label": "🎥 Akool (Streaming Avatar)",
+                "type": "webrtc",
+                "configured": bool(settings.akool_api_key and settings.akool_api_key.strip()),
+                "latency": "< 500ms",
+                "description": "High fidelity streaming avatar with real-time lip synchronisation.",
+            },
+            {
+                "id": "heygen",
+                "name": "HeyGen",
+                "label": "🎞️ HeyGen (Interactive WebRTC Video)",
+                "type": "webrtc",
+                "configured": bool(settings.heygen_api_key and settings.heygen_api_key.strip()),
+                "latency": "< 600ms",
+                "description": "Studio-quality interactive avatar video streaming.",
+            },
+            {
+                "id": "edge-tts",
+                "name": "Lightweight 2D Canvas",
+                "label": "⚡ Lightweight 2D Canvas ($0 Unmetered)",
+                "type": "canvas",
+                "configured": True,
+                "latency": "< 180ms",
+                "description": "Zero external credits required. 24kHz HD Edge-TTS + word-boundary lip sync.",
+            },
+        ],
+    }
 
 
 class WebRTCOfferResponse(BaseModel):

@@ -372,11 +372,11 @@
 
   <!-- Navigation Tabs -->
   <div class="top-nav-tabs">
-    <button class="nav-tab active" id="tab-btn-interactive">⚡ Live Stream (D-ID & Canvas)</button>
+    <button class="nav-tab active" id="tab-btn-interactive">⚡ Multi-Provider Live Streaming</button>
     <button class="nav-tab" id="tab-btn-heygen">🎬 HeyGen Studio Video (MP4)</button>
   </div>
 
-  <!-- Interactive Live Stage (D-ID & Canvas) -->
+  <!-- Interactive Live Stage (Multi-Provider WebRTC & 2D Canvas) -->
   <div class="main-stage" id="interactive-stage">
     
     <!-- Avatar Viewport -->
@@ -407,15 +407,19 @@
       <div class="form-group">
         <label class="form-label">
           <span>Avatar Engine / Provider</span>
-          <span id="engine-badge" style="font-size: 0.75rem; color: #38bdf8;">🎬 Neural WebRTC Video</span>
+          <span id="engine-badge" style="font-size: 0.75rem; color: #38bdf8;">🎬 D-ID WebRTC Video</span>
         </label>
         <select id="engine-select">
-          <option value="d-id" selected>🎬 D-ID WebRTC Stream (Photorealistic Video)</option>
-          <option value="simli">⚡ Simli WebRTC Stream (&lt;300ms Low Latency)</option>
-          <option value="anam">🤖 Anam.ai Digital Human WebRTC</option>
-          <option value="akool">🎥 Akool Streaming Avatar</option>
-          <option value="edge-tts">⚡ Lightweight 2D Canvas (Edge-TTS + HD Canvas)</option>
+          <option value="d-id" selected>🎬 D-ID WebRTC (Photorealistic Live Video)</option>
+          <option value="anam">🤖 Anam.ai WebRTC (Digital Human)</option>
+          <option value="simli">⚡ Simli WebRTC (&lt;300ms Low Latency)</option>
+          <option value="akool">🎥 Akool WebRTC (Streaming Avatar)</option>
+          <option value="heygen">🎞️ HeyGen WebRTC (Interactive Video)</option>
+          <option value="edge-tts">⚡ Lightweight 2D Canvas ($0 Unmetered Edge-TTS)</option>
         </select>
+        <div id="provider-status-row" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
+          <!-- Dynamically populated provider readiness pills -->
+        </div>
       </div>
 
       <div class="form-group" id="voice-group">
@@ -895,15 +899,66 @@
       }
     };
 
+    const providerStatusRow = document.getElementById("provider-status-row");
+    let availableProviders = [];
+
+    async function loadProvidersStatus() {
+      try {
+        const res = await fetch("http://localhost:8000/api/v1/providers");
+        if (!res.ok) return;
+        const data = await res.json();
+        availableProviders = data.providers || [];
+
+        if (providerStatusRow) {
+          providerStatusRow.innerHTML = "";
+          availableProviders.forEach(p => {
+            const pill = document.createElement("span");
+            pill.style.cssText = `
+              font-size: 0.72rem;
+              padding: 3px 8px;
+              border-radius: 6px;
+              cursor: pointer;
+              transition: all 0.2s;
+              border: 1px solid ${p.configured ? 'rgba(52, 211, 153, 0.4)' : 'rgba(248, 113, 113, 0.3)'};
+              background: ${p.configured ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.08)'};
+              color: ${p.configured ? '#34d399' : '#f87171'};
+            `;
+            pill.innerHTML = `${p.configured ? '●' : '○'} <b>${p.name}</b> ${p.configured ? 'Ready' : 'No Key'}`;
+            pill.title = `${p.description} Latency: ${p.latency}. Click to select engine.`;
+            pill.onclick = () => {
+              engineSelect.value = p.id;
+              engineSelect.dispatchEvent(new Event("change"));
+            };
+            providerStatusRow.appendChild(pill);
+          });
+        }
+
+        // Update select option labels
+        Array.from(engineSelect.options).forEach(opt => {
+          const match = availableProviders.find(p => p.id === opt.value);
+          if (match) {
+            opt.textContent = `${match.label} ${match.configured ? '✓' : '(Key Missing)'}`;
+          }
+        });
+      } catch (e) {
+        console.warn("Could not load provider statuses:", e);
+      }
+    }
+
+    loadProvidersStatus();
+
     engineSelect.onchange = () => {
       const mode = engineSelect.value;
+      const match = availableProviders.find(p => p.id === mode);
       if (mode === "edge-tts") {
-        engineBadge.textContent = "⚡ Lightweight 2D Canvas";
+        engineBadge.textContent = "⚡ Lightweight 2D Canvas (0ms WebRTC)";
         engineBadge.style.color = "#34d399";
         renderer.show();
         videoEl.style.display = "none";
       } else {
-        engineBadge.textContent = "🎬 Neural WebRTC Video";
+        const name = match ? match.name : mode.toUpperCase();
+        const lat = match ? match.latency : "<400ms";
+        engineBadge.textContent = `🎬 ${name} WebRTC (${lat})`;
         engineBadge.style.color = "#38bdf8";
       }
     };

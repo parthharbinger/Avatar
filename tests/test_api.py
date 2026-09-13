@@ -60,3 +60,19 @@ async def test_get_nonexistent_session_returns_404():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/sessions/does-not-exist")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_providers():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/providers")
+    assert response.status_code == 200
+    data = response.json()
+    assert "providers" in data
+    provider_ids = [p["id"] for p in data["providers"]]
+    assert "d-id" in provider_ids
+    assert "anam" in provider_ids
+    assert "simli" in provider_ids
+    assert "akool" in provider_ids
+    assert "heygen" in provider_ids
+    assert "edge-tts" in provider_ids
