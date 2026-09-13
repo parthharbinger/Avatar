@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: List[str] = ["*"]
 
-    # TTS
+    # TTS Providers
     tts_provider: str = "edge-tts"
     edge_tts_voice: str = "en-US-AriaNeural"
     edge_tts_verify_ssl: bool = False
@@ -36,14 +36,28 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_tts_voice: str = "alloy"
 
-    # Avatar Video Providers (Optional 3rd-party photorealistic WebRTC streaming)
-    avatar_provider: str = "edge-tts"  # 'edge-tts' (2D Canvas $0) | 'd-id' (WebRTC) | 'heygen' (WebRTC)
+    # Avatar Video Providers (D-ID, Simli, Anam.ai, Akool, HeyGen, Canvas)
+    avatar_provider: str = "d-id"  # 'd-id' | 'simli' | 'anam' | 'akool' | 'heygen' | 'canvas'
     did_api_key: str = ""
     did_source_url: str = "https://raw.githubusercontent.com/d-id/create-stream-webrtc/main/emma.png"
+    
+    # HeyGen
     heygen_api_key: str = ""
     heygen_avatar_id: str = "default"
 
-    # ASR (optional)
+    # Simli (Low-latency WebRTC Audio-to-Video)
+    simli_api_key: str = ""
+    simli_face_id: str = "tmp9i8bbq7v"
+
+    # Anam.ai (Conversational Digital Human API)
+    anam_api_key: str = ""
+    anam_persona_id: str = "default"
+
+    # Akool (Streaming Avatar & Talking Photo API)
+    akool_api_key: str = ""
+    akool_client_id: str = ""
+
+    # LLM & ASR
     groq_api_key: str = ""
 
 
