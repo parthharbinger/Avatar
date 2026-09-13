@@ -158,25 +158,31 @@ Open **`http://localhost:5173/`** to view the travel booking portal embedding th
 
 | API Service | Tier | Rate Limits | Token / Usage Quotas | Concurrency Limit |
 |---|---|---|---|---|
-| **D-ID Talks/Streams API** | Trial / Starter | 10 requests/sec | 20 trial credits (~5 min video); paid by minute | 1 concurrent stream per trial key; 60s idle timeout |
-| **Groq Cloud LLM** (`openai/gpt-oss-20b`) | Free Tier | **30 Requests/Min (RPM)**, 14,400 Requests/Day | **20,000 Tokens/Min (TPM)** | Unlimited burst up to TPM ceiling |
-| **Groq Whisper ASR** (`whisper-large-v3-turbo`) | Free Tier | 30 RPM | 2,000 audio seconds/min; 25MB max file | 5 concurrent requests |
-| **Microsoft Edge-TTS** | Free & Unmetered | ~100–200 req/min (abuse ceiling) | **Unlimited** ($0.00 / month) | 20+ concurrent WebSocket streams |
-| **ElevenLabs TTS** | Free Tier | 2 requests/sec | 10,000 characters/month (~10 min audio) | 2 concurrent streams |
-| **HeyGen Interactive Avatar** | Trial | 10 requests/sec | 1 free trial credit (~1 min video) | 1 concurrent interactive session |
+| **Microsoft Edge-TTS** | Free & Unmetered | ~100–200 req/min | **Unlimited** ($0.00 / month) | 20+ concurrent streams |
+| **Simli WebRTC** | Free Dev Tier | 10 requests/sec | Free dev minutes | 2 concurrent streams |
+| **Anam.ai WebRTC** | Free Starter Tier | 10 requests/sec | Free starter minutes | 2 concurrent sessions |
+| **Akool Streaming** | Free Trial Tier | 10 requests/sec | 50–100 free credits | 1 concurrent stream |
+| **D-ID Talks/Streams** | Trial Tier | 10 requests/sec | 20 trial credits (~5 min video) | 1 concurrent stream |
+| **HeyGen Interactive** | Trial Tier | 10 requests/sec | 1 free trial credit (~1 min video) | 1 concurrent interactive session |
+| **Groq Cloud LLM** (`llama-3.3-70b-versatile`) | Free Tier | **30 RPM**, 14,400 Requests/Day | **20,000 Tokens/Min (TPM)** | Unlimited burst up to TPM |
 
 ---
 
 ## 💰 Running Cost Analysis & Unit Economics
 
-| Architecture Mode | Compute / Infrastructure | TTS & ASR Cost | Video Stream / LLM Cost | Estimated Total Cost / Active Hour |
+| Architecture Mode | Infrastructure | Voice (TTS) | Video Engine | Total Cost / Active Hour |
 |---|---|---|---|---|
-| **⚡ Lightweight 2D Canvas Engine** | Single 1-vCPU Container ($4/mo) | $0.00 (Edge-TTS) | $0.00 (Client Canvas + Groq Free Tier) | **$0.005 / hour** (negligible server compute) |
-| **🎬 D-ID WebRTC Stream** | Single 1-vCPU Container ($4/mo) | Included in D-ID stream | ~$0.08 / min ($4.80 / streaming hour) | **~$4.80 / active hour** |
-| **🎬 HeyGen Streaming API** | Single 1-vCPU Container ($4/mo) | Included in HeyGen stream | ~$0.10 / min ($6.00 / streaming hour) | **~$6.00 / active hour** |
-| **🎙️ ElevenLabs + Canvas** | Single 1-vCPU Container ($4/mo) | $0.30 / 1,000 chars (~$1.80/hr) | $0.00 (Client Canvas) | **~$1.80 / active hour** |
+| **⚡ 2D Neural Canvas (Edge-TTS)** | 1-vCPU Container ($4/mo) | $0.00 (Edge-TTS) | $0.00 (Client GPU Canvas) | **~$0.005 / hour** |
+| **⚡ Simli WebRTC Stream** | 1-vCPU Container ($4/mo) | Included | ~$0.02 / active min | **~$1.20 / active hour** |
+| **🤖 Anam.ai Digital Human** | 1-vCPU Container ($4/mo) | Included | ~$0.03 / active min | **~$1.80 / active hour** |
+| **🎥 Akool Streaming Avatar** | 1-vCPU Container ($4/mo) | Included | ~$0.04 / active min | **~$2.40 / active hour** |
+| **🎬 D-ID WebRTC Stream** | 1-vCPU Container ($4/mo) | Included | ~$0.10 / active min | **~$6.00 / active hour** |
+| **🎬 HeyGen Streaming API** | 1-vCPU Container ($4/mo) | Included | ~$0.08 / active min | **~$4.80 / active hour** |
 
-> **Conclusion**: The **Lightweight 2D Canvas Engine** enables high-efficiency local testing and self-hosted deployment at minimal operating cost, while the **D-ID WebRTC Engine** provides film-grade production streaming when photorealistic visual fidelity is required.
+### Cost Calculation Endpoints
+The microservice exposes programmatic cost calculation APIs:
+- `GET /api/v1/costs` — Returns real-time pricing assumptions and presets (1k, 10k, 100k users).
+- `POST /api/v1/costs/estimate` — Dynamically computes monthly infrastructure & API spend for custom session volumes.
 
 ---
 
@@ -186,8 +192,10 @@ Open **`http://localhost:5173/`** to view the travel booking portal embedding th
 |---|---|---|---|
 | **Session Creation** (`POST /sessions`) | < 50ms | **8 ms** | In-memory atomic state allocation |
 | **Groq LLM First Token** | < 300ms | **140–180 ms** | Ultra-high-speed LPU inference |
-| **Edge-TTS Time-To-First-Frame (TTFF)** | < 500ms | **240–310 ms** | Async stream chunking + WordBoundary pre-pass |
-| **D-ID WebRTC Live Video TTFF** | < 1000ms | **380–460 ms** | WebRTC SDP negotiation + video track render |
+| **Simli WebRTC TTFF** | < 400ms | **260–300 ms** | Sub-second audio-to-video WebRTC |
+| **Anam.ai WebRTC TTFF** | < 500ms | **320–360 ms** | Direct digital human data channel |
+| **Edge-TTS Canvas TTFF** | < 500ms | **240–310 ms** | Async stream chunking + WordBoundary |
+| **D-ID WebRTC TTFF** | < 1000ms | **380–460 ms** | WebRTC SDP negotiation + video track |
 | **Barge-In Interruption Latency** | < 100ms | **< 35 ms** | Direct `asyncio.Task.cancel()` execution |
 
 ---
@@ -195,7 +203,7 @@ Open **`http://localhost:5173/`** to view the travel booking portal embedding th
 ## 🧪 Automated Test Suite
 
 ```bash
-# Run 19/19 Backend pytest tests
+# Run 22/22 Backend pytest tests
 uv run pytest tests/ -v
 
 # Run 5/5 Frontend SDK Vitest tests

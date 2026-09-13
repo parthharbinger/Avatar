@@ -12,8 +12,10 @@ COPY pyproject.toml uv.lock ./
 # Install production dependencies (no dev tools)
 RUN uv sync --frozen --no-dev
 
-# Copy application code
+# Copy application code, demo UI, and SDK assets
 COPY app/ ./app/
+COPY demo/ ./demo/
+COPY sdk/dist/ ./sdk/dist/
 
 # Expose port
 EXPOSE 8000

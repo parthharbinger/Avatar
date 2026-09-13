@@ -76,3 +76,29 @@ async def test_list_providers():
     assert "akool" in provider_ids
     assert "heygen" in provider_ids
     assert "edge-tts" in provider_ids
+
+
+@pytest.mark.asyncio
+async def test_get_cost_assumptions():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/costs")
+    assert response.status_code == 200
+    data = response.json()
+    assert "providers" in data
+    assert "edge-tts" in data["providers"]
+    assert "d-id" in data["providers"]
+    assert "monthly_projection_presets" in data
+
+
+@pytest.mark.asyncio
+async def test_estimate_costs():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/costs/estimate",
+            json={"sessions_per_month": 5000, "avg_duration_minutes": 2.0, "active_engine": "edge-tts"}
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_streaming_minutes"] == 10000
+    assert "comparison_breakdown" in data
+    assert "edge-tts" in data["comparison_breakdown"]
