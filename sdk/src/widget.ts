@@ -149,6 +149,13 @@ export class AvatarWidget {
   /** Switch engine ('d-id' | 'simli' | 'anam' | 'akool' | 'heygen' | 'canvas') */
   async setEngine(engine: "d-id" | "simli" | "anam" | "akool" | "heygen" | "canvas" | "webrtc" | "edge-tts"): Promise<void> {
     this.options.engine = engine as any;
+    
+    // Sync dropdown value in UI
+    const select = this.rootEl.querySelector(".avatar-widget-engine-select") as HTMLSelectElement;
+    if (select) {
+      select.value = engine === "edge-tts" ? "canvas" : engine === "webrtc" ? "d-id" : engine;
+    }
+
     if (engine === "canvas" || engine === "edge-tts") {
       if (this.videoEl) this.videoEl.style.display = "none";
       if (!this.renderer && this.canvasSlot) {
@@ -197,7 +204,7 @@ export class AvatarWidget {
       );
       if (!offerResp.ok) {
         const err = await offerResp.json();
-        throw new Error(err.detail || `${provider.toUpperCase()} WebRTC offer creation failed`);
+        throw new Error(err.detail || `${provider.toUpperCase()} WebRTC offer creation failed. Ensure API key is configured.`);
       }
 
       const offerData = await offerResp.json();
@@ -214,7 +221,7 @@ export class AvatarWidget {
           this.videoEl.srcObject = event.streams[0];
           this.videoEl.style.display = "block";
           this.videoEl.play().catch(console.warn);
-          this._setStatus(`Online ✓ (${provider.toUpperCase()} Live Stream)`, "ok");
+          this._setStatus(`Online ✓ (${provider.toUpperCase()} Stream)`, "ok");
         }
       };
 
@@ -262,7 +269,7 @@ export class AvatarWidget {
 
     } catch (err: any) {
       console.error(`[AvatarWidget] ${provider.toUpperCase()} Stream Error:`, err);
-      this._setStatus(`${provider.toUpperCase()} error: ${err.message}`, "error");
+      this._setStatus(`${err.message}`, "error");
     } finally {
       this.isConnecting = false;
     }
@@ -283,7 +290,7 @@ export class AvatarWidget {
       if (this.canvasSlot && !this.renderer) {
         this.client.mount(this.canvasSlot, this.options.avatar);
       }
-      this._setStatus("Online ✓ (2D Engine)", "ok");
+      this._setStatus("Online ✓ (2D Canvas)", "ok");
     } catch (err: any) {
       console.warn("[AvatarWidget] Canvas connect error:", err);
     }
@@ -295,8 +302,10 @@ export class AvatarWidget {
     this._setStatus(`Speaking (${provider.toUpperCase()})...`, "speaking");
 
     // If WebRTC stream is not active or closed, reconnect first
-    if (!this.activeStreamId || this.peerConnection?.connectionState !== "connected") {
-      await this._initWebRTCStream();
+    if (this.options.engine !== "canvas" && this.options.engine !== "edge-tts") {
+      if (!this.activeStreamId || this.peerConnection?.connectionState !== "connected") {
+        await this._initWebRTCStream();
+      }
     }
 
     if (this.activeStreamId) {
@@ -410,6 +419,8 @@ export class AvatarWidget {
     const wrapper = document.createElement("div");
     wrapper.className = `avatar-widget-root ${isFloating ? "floating-widget" : "inline-widget"}`;
 
+    const curEngine = this.options.engine === "webrtc" ? "d-id" : this.options.engine === "edge-tts" ? "canvas" : this.options.engine;
+
     wrapper.innerHTML = `
       <style>
         .avatar-widget-root {
@@ -441,9 +452,10 @@ export class AvatarWidget {
           padding: 10px 14px;
           background: rgba(30, 41, 59, 0.85);
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          gap: 8px;
         }
         .avatar-widget-title {
-          font-size: 0.88rem;
+          font-size: 0.86rem;
           font-weight: 700;
           display: flex;
           align-items: center;
@@ -459,12 +471,27 @@ export class AvatarWidget {
           box-shadow: 0 0 8px #10b981;
         }
         .avatar-widget-status {
-          font-size: 0.72rem;
+          font-size: 0.70rem;
           color: #94a3b8;
         }
         .avatar-widget-status.ok { color: #34d399; }
         .avatar-widget-status.speaking { color: #38bdf8; font-weight: 600; }
         .avatar-widget-status.error { color: #f87171; }
+        .avatar-widget-engine-select {
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: #38bdf8;
+          font-family: inherit;
+          font-size: 0.72rem;
+          font-weight: 600;
+          padding: 4px 8px;
+          border-radius: 8px;
+          outline: none;
+          cursor: pointer;
+        }
+        .avatar-widget-engine-select:focus {
+          border-color: #6366f1;
+        }
         .avatar-widget-canvas-slot {
           width: 100%;
           height: 240px;
@@ -578,8 +605,18 @@ export class AvatarWidget {
         }
       </style>
       <div class="avatar-widget-header">
-        <span class="avatar-widget-title">${this._escape(this.options.title)}</span>
-        <span class="avatar-widget-status">Connecting Live Stream...</span>
+        <div style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;">
+          <span class="avatar-widget-title">${this._escape(this.options.title)}</span>
+          <span class="avatar-widget-status">Connecting...</span>
+        </div>
+        <select class="avatar-widget-engine-select" title="Switch Avatar Engine">
+          <option value="d-id" ${curEngine === "d-id" ? "selected" : ""}>🎬 D-ID</option>
+          <option value="simli" ${curEngine === "simli" ? "selected" : ""}>⚡ Simli</option>
+          <option value="anam" ${curEngine === "anam" ? "selected" : ""}>🤖 Anam.ai</option>
+          <option value="akool" ${curEngine === "akool" ? "selected" : ""}>🎥 Akool</option>
+          <option value="heygen" ${curEngine === "heygen" ? "selected" : ""}>🎞️ HeyGen</option>
+          <option value="canvas" ${curEngine === "canvas" ? "selected" : ""}>⚡ 2D Canvas</option>
+        </select>
       </div>
       <div class="avatar-widget-canvas-slot">
         <video class="avatar-widget-video" autoplay playsinline></video>
@@ -634,6 +671,7 @@ export class AvatarWidget {
     const micBtn = this.rootEl.querySelector(".btn-widget-mic") as HTMLButtonElement;
     const btnFem = this.rootEl.querySelector(".btn-persona-female") as HTMLButtonElement;
     const btnMale = this.rootEl.querySelector(".btn-persona-male") as HTMLButtonElement;
+    const engineSelect = this.rootEl.querySelector(".avatar-widget-engine-select") as HTMLSelectElement;
 
     const handleSend = () => {
       const text = input.value.trim();
@@ -652,6 +690,12 @@ export class AvatarWidget {
     }
     if (btnMale) {
       btnMale.onclick = () => this.setAvatar("male");
+    }
+
+    if (engineSelect) {
+      engineSelect.onchange = () => {
+        this.setEngine(engineSelect.value as any);
+      };
     }
 
     micBtn.onclick = () => {

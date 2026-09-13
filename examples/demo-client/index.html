@@ -92,8 +92,21 @@
 
       <!-- Persona Choice Selector (Male / Female) -->
       <div class="persona-selector-bar">
-        <button class="persona-pill active" id="portal-btn-emma" onclick="switchPersona('female')">👩 Emma (Female)</button>
-        <button class="persona-pill" id="portal-btn-david" onclick="switchPersona('male')">👨 David (Male)</button>
+        <button class="persona-pill active" id="portal-btn-emma" onclick="switchPersona('female')">👩 Emma</button>
+        <button class="persona-pill" id="portal-btn-david" onclick="switchPersona('male')">👨 David</button>
+      </div>
+
+      <!-- Provider / Engine Selector Dropdown -->
+      <div class="provider-selector-box">
+        <label>Avatar Provider</label>
+        <select id="portal-provider-select" onchange="switchEngine(this.value)">
+          <option value="d-id" selected>🎬 D-ID (Live WebRTC Video)</option>
+          <option value="simli">⚡ Simli (&lt;300ms WebRTC Stream)</option>
+          <option value="anam">🤖 Anam.ai (Digital Human)</option>
+          <option value="akool">🎥 Akool (Streaming Avatar)</option>
+          <option value="heygen">🎞️ HeyGen (WebRTC Video)</option>
+          <option value="canvas">⚡ 2D Canvas (HD Neural Audio)</option>
+        </select>
       </div>
 
       <!-- SDK Mount Target -->

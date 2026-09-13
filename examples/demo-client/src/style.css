@@ -308,3 +308,40 @@ h1 {
   box-shadow: 0 0 12px rgba(99, 102, 241, 0.35);
 }
 
+/* ── Provider Selector Box ── */
+.provider-selector-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.provider-selector-box label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.provider-selector-box select {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: #38bdf8;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 8px 10px;
+  outline: none;
+  cursor: pointer;
+}
+
+.provider-selector-box select:focus {
+  border-color: #6366f1;
+}
+
+
