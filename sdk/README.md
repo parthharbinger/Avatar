@@ -1,50 +1,69 @@
 # @avatar-sdk/client
 
-> Embeddable real-time 2D AI avatar — drop a talking, lip-synced avatar into any web app in a few lines of code.
+> Embeddable real-time interactive AI avatar SDK — drop a photorealistic or 2D neural talking avatar into any web app in a few lines of code.
 
-## Installation
+[![npm version](https://img.shields.io/badge/npm-0.1.0-blue.svg)](https://www.npmjs.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.4+-3178C6.svg?style=flat&logo=typescript)](https://www.typescriptlang.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+---
+
+## 📦 Installation
 
 ```bash
+# npm
 npm install @avatar-sdk/client
+
+# yarn
+yarn add @avatar-sdk/client
+
+# pnpm
+pnpm add @avatar-sdk/client
 ```
 
-Or load from a CDN (UMD/ESM):
+Or import directly from CDN in plain HTML/ES modules:
 ```html
 <script type="module">
-  import { AvatarClient } from "./dist/index.mjs";
+  import { createAvatarWidget } from "https://cdn.jsdelivr.net/npm/@avatar-sdk/client/dist/index.mjs";
 </script>
 ```
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-### Option A: 1-Line Drop-in Widget (Fastest)
+### Option A: 1-Line Drop-in Widget (Recommended)
 
-Drop a complete interactive talking AI avatar (with live voice mic, LLM chat, and lip-sync canvas) into any web app:
+Drop a complete interactive AI avatar (with live voice microphone, Groq LLM intelligence, WebRTC video streaming, and lip-sync canvas) into any web app:
 
 ```typescript
 import { createAvatarWidget } from "@avatar-sdk/client";
 
-// Mount directly into any HTML element (or use floating: true for bottom-right assistant)
-createAvatarWidget({
-  target: "#avatar-container",
+// Mount into any HTML container element (or floating: true for a bottom-right assistant)
+const widget = createAvatarWidget({
+  target: "#ai-concierge-slot",
   serverUrl: "http://localhost:8000",
-  avatar: "emma", // built-in persona (no local assets needed!)
-  title: "AI Concierge",
-  welcomeMessage: "Hello! How can I help you today?",
-  systemPrompt: "You are a helpful and concise AI assistant.",
+  engine: "anam",                      // "anam" | "d-id" | "simli" | "akool" | "canvas"
+  avatar: "female",                    // "female" (Emma) or "male" (David)
+  title: "Emma — AI Concierge",
+  welcomeMessage: "Hello! How can I assist you today?",
+  systemPrompt: "You are Emma, a friendly AI concierge. Keep answers concise and helpful.",
 });
+
+// Programmatically trigger questions or speech
+await widget.ask("Can you tell me about your flight deals?");
 ```
+
+---
 
 ### Option B: Headless SDK (Custom UI Architecture)
 
-For developers building a custom UI layout:
+For developers building a fully custom UI layout:
 
 ```typescript
 import { AvatarClient } from "@avatar-sdk/client";
 
-// 1. Create client
+// 1. Create client instance
 const avatar = new AvatarClient({
   serverUrl: "ws://localhost:8000",
   avatarId: "female",
@@ -56,8 +75,8 @@ await avatar.connect();
 // 3. Mount canvas into any element
 avatar.mount(document.querySelector("#avatar-container")!);
 
-// 4. Speak
-avatar.speak("Hello! I am your real-time AI avatar.");
+// 4. Speak text
+avatar.speak("Hello! I am your real-time interactive AI avatar.");
 
 // 5. Interrupt mid-speech (barge-in)
 avatar.interrupt();
@@ -68,107 +87,72 @@ await avatar.destroy();
 
 ---
 
-## API Reference
-
-### `new AvatarClient(options)`
+## ⚙️ Widget Options Reference (`AvatarWidgetOptions`)
 
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `serverUrl` | `string` | **required** | WebSocket URL of the backend, e.g. `ws://localhost:8000` |
-| `avatarId` | `string` | `"default"` | Avatar identity to use |
-| `reconnectDelayMs` | `number` | `2000` | Delay between reconnect attempts (ms) |
-| `maxReconnectAttempts` | `number` | `5` | Max reconnect retries before giving up |
+|---|---|---|---|
+| `target` | `HTMLElement \| string` | `document.body` | Target container element or CSS selector string (e.g. `"#my-slot"`). |
+| `floating` | `boolean` | `false` | When `true`, renders as a floating interactive assistant pinned to the bottom-right. |
+| `serverUrl` | `string` | `"http://localhost:8000"` | Base URL of the backend avatar microservice. |
+| `engine` | `string` | `"d-id"` | Avatar streaming engine: `'anam'` \| `'d-id'` \| `'simli'` \| `'akool'` \| `'canvas'`. |
+| `avatar` | `string` | `"female"` | Avatar persona: `'female'` (Emma/Mia) or `'male'` (David/Gabriel). |
+| `voice` | `string` | auto-selected | Neural voice name (e.g. `'en-US-JennyNeural'`, `'en-US-ChristopherNeural'`). |
+| `title` | `string` | `"AI Concierge"` | Header title displayed on the widget. |
+| `welcomeMessage` | `string` | `"Hello!"` | First greeting spoken and displayed in chat history. |
+| `systemPrompt` | `string` | default prompt | System instructions guiding the conversational LLM persona. |
 
 ---
 
-### `avatar.connect(): Promise<void>`
-Creates a REST session on the server and opens the WebSocket connection. Resolves when the connection is fully established.
-
-### `avatar.mount(container: HTMLElement): void`
-Renders the 2D avatar canvas inside the given DOM element. Call after `connect()`.
-
-### `avatar.speak(text: string): void`
-Sends text to the server to be spoken. If already speaking, will interrupt the current speech first (barge-in).
-
-### `avatar.interrupt(): void`
-Immediately stops the avatar's current speech, clears audio, and resets the mouth to neutral.
-
-### `avatar.on(event, listener): this`
-Subscribe to avatar events.
-
-### `avatar.off(event, listener): this`
-Unsubscribe from avatar events.
-
-### `avatar.destroy(): Promise<void>`
-Stops all audio, removes the canvas, closes the WebSocket, and cleans up all listeners.
-
-### `avatar.state: ConnectionState`
-Current connection state: `"idle" | "connecting" | "connected" | "reconnecting" | "closed"`.
-
----
-
-## Events
+## 🛠️ Widget API Methods
 
 ```typescript
-avatar.on("connected",    ({ sessionId }) => console.log("Connected:", sessionId));
+// Ask conversational question (Groq LLM generates answer and speaks it)
+const reply = await widget.ask("What is the refund policy?");
+
+// Speak arbitrary text directly
+await widget.speak("Your booking has been confirmed.");
+
+// Switch between Male (David) and Female (Emma) personas dynamically
+await widget.setAvatar("male");
+await widget.setAvatar("female");
+
+// Switch avatar streaming provider
+await widget.setEngine("anam");
+await widget.setEngine("canvas");
+
+// Barge-in interruption (instantly halts speaking mid-sentence)
+widget.interrupt();
+
+// Clean up DOM and disconnect WebRTC / WebSocket streams
+await widget.destroy();
+```
+
+---
+
+## 📡 Headless Client Events (`AvatarClient`)
+
+```typescript
+avatar.on("connected",    ({ sessionId }) => console.log("Connected session:", sessionId));
 avatar.on("speaking",     ({ speechId })  => console.log("Now speaking:", speechId));
-avatar.on("ended",        ({ speechId })  => console.log("Finished:", speechId));
+avatar.on("ended",        ({ speechId })  => console.log("Finished speaking:", speechId));
 avatar.on("interrupted",  ({ speechId })  => console.log("Interrupted:", speechId));
 avatar.on("disconnected", ({ reason })    => console.log("Disconnected:", reason));
 avatar.on("error",        ({ message })   => console.error("Error:", message));
-avatar.on("viseme",       ({ shape, timeMs }) => console.log("Mouth:", shape));
 ```
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `connected` | `{ sessionId }` | WebSocket connection established |
-| `speaking` | `{ speechId }` | Avatar has started speaking |
-| `ended` | `{ speechId }` | Speech finished naturally |
-| `interrupted` | `{ speechId }` | Speech was cut short |
-| `disconnected` | `{ reason }` | Connection lost |
-| `error` | `{ message }` | Server or network error |
-| `viseme` | `{ shape, timeMs }` | Current mouth shape update |
 
 ---
 
-## Building
+## 🧪 Testing & Building
 
 ```bash
-npm run build      # Build ESM + CJS + types
-npm run dev        # Watch mode
-npm test           # Run tests
+# Run unit tests
+npm test
+
+# Build ESM + CJS + TypeScript types
+npm run build
 ```
 
 ---
 
-## WebSocket Protocol
-
-The SDK communicates with the backend using this message protocol:
-
-**Client → Server:**
-```json
-{ "action": "speak", "text": "Hello world" }
-{ "action": "interrupt" }
-{ "action": "ping" }
-```
-
-**Server → Client:**
-```json
-{ "type": "connected", "session_id": "..." }
-{ "type": "start", "speech_id": "..." }
-{ "type": "viseme_timeline", "speech_id": "...", "events": [{"t": 0, "v": "neutral"}] }
-{ "type": "audio_chunk", "speech_id": "...", "chunk_index": 0, "data": "<base64 MP3>" }
-{ "type": "end", "speech_id": "..." }
-{ "type": "interrupted", "speech_id": "..." }
-{ "type": "error", "message": "..." }
-```
-
----
-
-## TTFF Measurement
-
-The SDK automatically logs Time-To-First-Frame to the browser console:
-```
-[AvatarSDK] TTFF: 287ms
-```
-Target: **< 500ms** on local network.
+## 📄 License
+MIT License.
