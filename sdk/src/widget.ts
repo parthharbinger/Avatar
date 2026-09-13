@@ -1,21 +1,20 @@
 /**
  * AvatarWidget — Drop-in plug-and-play AI Avatar component.
- * Allows any website of any domain to embed a full interactive talking avatar
- * with voice input, conversational LLM, and photorealistic D-ID WebRTC video stream in a single function call.
+ * Embeds photorealistic live video streaming avatar powered by D-ID WebRTC with Groq LLM intelligence.
  */
 import { AvatarClient } from "./client";
 import { Renderer2D } from "./renderer2d";
 
 export interface AvatarWidgetOptions {
-  /** Target container element or CSS selector string (e.g. "#ai-assistant") */
+  /** Target container element or CSS selector string (e.g. "#ai-concierge-slot") */
   target?: HTMLElement | string;
   /** Set to true to render as a floating bottom-right interactive assistant */
   floating?: boolean;
   /** Server URL of the avatar backend, e.g. "http://localhost:8000" */
   serverUrl?: string;
-  /** Avatar engine: 'd-id' (Photorealistic WebRTC Video) or 'canvas' (2D Neural Engine). Default: 'd-id' */
+  /** Avatar engine: 'd-id' (Photorealistic WebRTC Video) or 'canvas' (2D Neural Canvas). Default: 'd-id' */
   engine?: "d-id" | "webrtc" | "canvas" | "edge-tts" | "heygen";
-  /** Avatar persona: 'emma' / 'female', 'david' / 'male', or custom image URL */
+  /** Avatar persona: 'female' / 'emma', 'male' / 'david' */
   avatar?: string;
   /** Voice name, e.g. 'en-US-JennyNeural', 'en-US-ChristopherNeural' */
   voice?: string;
@@ -39,16 +38,17 @@ export class AvatarWidget {
   private isListening = false;
   private recognition: any = null;
 
-  // WebRTC Streaming State (D-ID / HeyGen)
+  // D-ID WebRTC Streaming State
   private peerConnection: RTCPeerConnection | null = null;
   private activeSessionId: string | null = null;
   private activeStreamId: string | null = null;
   private providerSessionId: string | null = null;
+  private isConnecting = false;
 
   constructor(options: AvatarWidgetOptions = {}) {
     const serverUrl = options.serverUrl || "http://localhost:8000";
     const engine = options.engine || "d-id";
-    const avatar = options.avatar || "female";
+    const avatar = (options.avatar || "female").toLowerCase();
     const isMale = avatar === "male" || avatar === "david";
 
     this.options = {
@@ -56,7 +56,7 @@ export class AvatarWidget {
       floating: options.floating ?? false,
       serverUrl,
       engine,
-      avatar,
+      avatar: isMale ? "male" : "female",
       voice: options.voice || (isMale ? "en-US-ChristopherNeural" : "en-US-JennyNeural"),
       title: options.title || (isMale ? "David — AI Concierge" : "Emma — AI Concierge"),
       welcomeMessage: options.welcomeMessage || "Hello! How can I assist you today?",
@@ -76,7 +76,7 @@ export class AvatarWidget {
     this.canvasSlot = this.rootEl.querySelector(".avatar-widget-canvas-slot") as HTMLElement;
     this.videoEl = this.rootEl.querySelector(".avatar-widget-video") as HTMLVideoElement;
 
-    // ── Instantly Mount Canvas Renderer so the Face is NEVER a blank black box ──
+    // Show initial portrait placeholder until WebRTC video stream renders
     if (this.canvasSlot) {
       this.renderer = new Renderer2D(this.canvasSlot, this.options.avatar);
     }
@@ -85,20 +85,16 @@ export class AvatarWidget {
     this._bindEvents();
   }
 
-  /** Initialize and connect the avatar stream */
+  /** Initialize and connect the D-ID avatar stream */
   async init(): Promise<void> {
-    const isWebRTC = this.options.engine === "d-id" || this.options.engine === "webrtc" || this.options.engine === "heygen";
-
-    // 1. Always initialize the fallback WebSocket client for zero-latency neural audio & 2D lip-sync
-    await this._initCanvasStream();
-
-    // 2. If WebRTC mode is selected, also negotiate the live WebRTC video stream
-    if (isWebRTC) {
-      await this._initWebRTCStream();
+    if (this.options.engine === "canvas" || this.options.engine === "edge-tts") {
+      await this._initCanvasStream();
+    } else {
+      await this._initDIDStream();
     }
   }
 
-  /** Switch between Male (David) and Female (Emma) personas dynamically */
+  /** Switch between Male (David / Adam) and Female (Emma / Alyssa) personas dynamically */
   async setAvatar(avatarId: string): Promise<void> {
     const lower = avatarId.toLowerCase();
     const isMale = lower === "male" || lower === "david";
@@ -125,36 +121,37 @@ export class AvatarWidget {
       }
     }
 
-    // Update Canvas Portrait
+    // Update placeholder canvas
     if (this.renderer) {
       this.renderer.setImage(normId);
     }
 
-    // If WebRTC is active, re-negotiate stream for new persona
-    const isWebRTC = this.options.engine === "d-id" || this.options.engine === "webrtc" || this.options.engine === "heygen";
-    if (isWebRTC) {
-      if (this.videoEl) this.videoEl.style.display = "none";
-      await this._initWebRTCStream();
+    if (this.videoEl) {
+      this.videoEl.style.display = "none";
+    }
+
+    // Re-create D-ID WebRTC Stream for the selected persona
+    if (this.options.engine !== "canvas" && this.options.engine !== "edge-tts") {
+      await this._initDIDStream();
     }
   }
 
-  /** Switch rendering engine at runtime ('d-id' vs 'canvas') */
+  /** Switch engine */
   async setEngine(engine: "d-id" | "canvas" | "webrtc" | "edge-tts"): Promise<void> {
     this.options.engine = engine as any;
-    const engineSelect = this.rootEl.querySelector(".avatar-widget-engine-select") as HTMLSelectElement;
-    if (engineSelect) engineSelect.value = engine === "canvas" || engine === "edge-tts" ? "canvas" : "d-id";
-
     if (engine === "canvas" || engine === "edge-tts") {
       if (this.videoEl) this.videoEl.style.display = "none";
-      this._setStatus("Online ✓ (2D Canvas)", "ok");
+      await this._initCanvasStream();
     } else {
-      await this._initWebRTCStream();
+      await this._initDIDStream();
     }
   }
 
-  /** Initialize Photorealistic D-ID WebRTC Video Stream */
-  private async _initWebRTCStream(): Promise<void> {
-    this._setStatus("Connecting WebRTC Live Stream...", "");
+  /** Connect Photorealistic D-ID WebRTC Video Stream */
+  private async _initDIDStream(): Promise<void> {
+    if (this.isConnecting) return;
+    this.isConnecting = true;
+    this._setStatus("Connecting D-ID WebRTC...", "");
 
     try {
       if (this.peerConnection) {
@@ -172,15 +169,14 @@ export class AvatarWidget {
       const sessData = await sessResp.json();
       this.activeSessionId = sessData.session_id;
 
-      // 2. Fetch WebRTC Offer from backend adapter (D-ID / HeyGen)
-      const provider = this.options.engine === "canvas" || this.options.engine === "edge-tts" ? "d-id" : this.options.engine;
+      // 2. Fetch WebRTC Offer from D-ID backend adapter
       const offerResp = await fetch(
-        `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/offer?avatar_id=${this.options.avatar}&provider=${provider}`,
+        `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/offer?avatar_id=${this.options.avatar}&provider=d-id`,
         { method: "POST" }
       );
       if (!offerResp.ok) {
         const err = await offerResp.json();
-        throw new Error(err.detail || "WebRTC offer creation failed");
+        throw new Error(err.detail || "D-ID WebRTC offer creation failed");
       }
 
       const offerData = await offerResp.json();
@@ -197,13 +193,13 @@ export class AvatarWidget {
           this.videoEl.srcObject = event.streams[0];
           this.videoEl.style.display = "block";
           this.videoEl.play().catch(console.warn);
-          this._setStatus("Online ✓ (D-ID Live Video)", "ok");
+          this._setStatus("Online ✓ (D-ID Live Stream)", "ok");
         }
       };
 
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-          fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/ice?provider=${provider}`, {
+          fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/ice?provider=d-id`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -221,8 +217,7 @@ export class AvatarWidget {
           this.peerConnection?.connectionState === "failed" ||
           this.peerConnection?.connectionState === "closed"
         ) {
-          this._setStatus("Live stream idle (2D Fallback Ready)", "ok");
-          if (this.videoEl) this.videoEl.style.display = "none";
+          this._setStatus("Stream idle. Ready to talk.", "");
         }
       };
 
@@ -232,7 +227,7 @@ export class AvatarWidget {
       await this.peerConnection.setLocalDescription(answer);
 
       // 5. Submit SDP Answer to Backend
-      await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/answer?provider=${provider}`, {
+      await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/answer?provider=d-id`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -242,50 +237,50 @@ export class AvatarWidget {
         }),
       });
 
-      this._setStatus("WebRTC Connected ✓ Waiting for video track...", "ok");
+      this._setStatus("D-ID Connected ✓ Ready", "ok");
 
     } catch (err: any) {
-      console.warn("[AvatarWidget] WebRTC init note (using 2D fallback):", err.message);
-      this._setStatus("Online ✓ (2D Canvas Audio)", "ok");
-      if (this.videoEl) this.videoEl.style.display = "none";
+      console.error("[AvatarWidget] D-ID Stream Error:", err);
+      this._setStatus(`D-ID error: ${err.message}`, "error");
+    } finally {
+      this.isConnecting = false;
     }
   }
 
-  /** Initialize 2D Canvas Stream via WebSocket */
+  /** Initialize 2D Canvas Stream via WebSocket (only if explicitly set) */
   private async _initCanvasStream(): Promise<void> {
     const wsUrl = this.options.serverUrl.replace("https://", "wss://").replace("http://", "ws://");
-
     if (this.client) {
       try { await this.client.destroy(); } catch(e){}
     }
-
     this.client = new AvatarClient({
       serverUrl: wsUrl,
       avatarId: this.options.avatar,
     });
-
     try {
       await this.client.connect();
       if (this.canvasSlot && !this.renderer) {
         this.client.mount(this.canvasSlot, this.options.avatar);
       }
-      this._setStatus("Online ✓", "ok");
+      this._setStatus("Online ✓ (2D Engine)", "ok");
     } catch (err: any) {
-      console.warn("[AvatarWidget] Canvas client connect error:", err);
+      console.warn("[AvatarWidget] Canvas connect error:", err);
     }
   }
 
-  /** Speak arbitrary text through active avatar stream */
+  /** Speak arbitrary text through D-ID live stream */
   async speak(text: string): Promise<void> {
-    this._setStatus("Speaking...", "speaking");
-    let spokenViaWebRTC = false;
+    this._setStatus("Speaking (D-ID)...", "speaking");
 
-    const isWebRTC = this.options.engine === "d-id" || this.options.engine === "webrtc";
+    // If D-ID stream is not active or closed, reconnect first
+    if (!this.activeStreamId || this.peerConnection?.connectionState !== "connected") {
+      await this._initDIDStream();
+    }
 
-    if (isWebRTC && this.activeStreamId && this.peerConnection?.connectionState === "connected") {
+    if (this.activeStreamId) {
       try {
         const resp = await fetch(
-          `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/speak?provider=${this.options.engine}`,
+          `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/speak?provider=d-id`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -297,20 +292,32 @@ export class AvatarWidget {
             }),
           }
         );
-        if (resp.ok) {
-          spokenViaWebRTC = true;
-          setTimeout(() => this._setStatus("Online ✓", "ok"), 3500);
-        }
-      } catch (err) {
-        console.warn("[AvatarWidget] WebRTC speak failed, falling back to 2D Audio:", err);
-      }
-    }
 
-    // Seamless Fallback: if WebRTC not connected or failed, play via HD Neural Audio on Canvas
-    if (!spokenViaWebRTC && this.client) {
-      if (this.videoEl) this.videoEl.style.display = "none";
+        if (!resp.ok) {
+          // If stream expired, re-create once and retry speak
+          await this._initDIDStream();
+          await fetch(
+            `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/speak?provider=d-id`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                stream_id: this.activeStreamId,
+                text: text,
+                voice: this.options.voice,
+                provider_session_id: this.providerSessionId,
+              }),
+            }
+          );
+        }
+
+        setTimeout(() => this._setStatus("Online ✓", "ok"), 4000);
+      } catch (err: any) {
+        console.error("[AvatarWidget] D-ID speak error:", err);
+        this._setStatus("Speak error", "error");
+      }
+    } else if (this.client) {
       this.client.speak(text, { voice: this.options.voice });
-      setTimeout(() => this._setStatus("Online ✓", "ok"), 3000);
     }
   }
 
@@ -438,7 +445,7 @@ export class AvatarWidget {
         .avatar-widget-status.error { color: #f87171; }
         .avatar-widget-canvas-slot {
           width: 100%;
-          height: 220px;
+          height: 240px;
           background: #090d16;
           position: relative;
           overflow: hidden;
@@ -553,13 +560,13 @@ export class AvatarWidget {
       </style>
       <div class="avatar-widget-header">
         <span class="avatar-widget-title">${this._escape(this.options.title)}</span>
-        <span class="avatar-widget-status">Connecting...</span>
+        <span class="avatar-widget-status">Connecting D-ID...</span>
       </div>
       <div class="avatar-widget-canvas-slot">
         <video class="avatar-widget-video" autoplay playsinline></video>
         <div class="avatar-widget-toolbar">
-          <button class="avatar-persona-btn btn-persona-female ${!isMale ? "active" : ""}">👩 Emma</button>
-          <button class="avatar-persona-btn btn-persona-male ${isMale ? "active" : ""}">👨 David</button>
+          <button class="avatar-persona-btn btn-persona-female ${!isMale ? "active" : ""}">👩 Emma (D-ID)</button>
+          <button class="avatar-persona-btn btn-persona-male ${isMale ? "active" : ""}">👨 David (D-ID)</button>
         </div>
       </div>
       <div class="avatar-widget-history">
@@ -669,7 +676,7 @@ export class AvatarWidget {
  * ```typescript
  * import { createAvatarWidget } from "@avatar-sdk/client";
  *
- * createAvatarWidget({ target: "#my-slot", engine: "d-id", avatar: "emma" });
+ * createAvatarWidget({ target: "#my-slot", engine: "d-id", avatar: "female" });
  * ```
  */
 export function createAvatarWidget(options?: AvatarWidgetOptions): AvatarWidget {
