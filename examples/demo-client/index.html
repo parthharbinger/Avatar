@@ -34,7 +34,7 @@
       <div class="hero-banner">
         <span class="promo-pill">🔥 Fall Getaway Sale — Up to 40% Off Flights</span>
         <h1>Explore the World with Real-Time AI Assistance</h1>
-        <p>Book flights, boutique hotels, and luxury excursions worldwide with instant guidance from Emma, your dedicated AI travel concierge.</p>
+        <p>Book flights, boutique hotels, and luxury excursions worldwide with instant guidance from your dedicated AI travel concierge.</p>
       </div>
 
       <!-- Quick Flight Search Widget -->
@@ -52,7 +52,7 @@
             <label>Dates</label>
             <input type="text" value="Oct 14 — Oct 22" readonly />
           </div>
-          <button class="search-btn">Search Flights</button>
+          <button class="search-btn" onclick="askConcierge('Can you find the cheapest flight deals from San Francisco to Tokyo in October?')">Search Flights</button>
         </div>
       </div>
 
@@ -87,8 +87,15 @@
     <!-- Right: Embedded AI Avatar Concierge (Powered entirely by @avatar-sdk/client) -->
     <aside class="concierge-sidebar">
       <div class="integration-notice">
-        <span>⚡ Embedded via <code>@avatar-sdk/client</code> in 3 lines of code</span>
+        <span>⚡ Embedded via <code>@avatar-sdk/client</code> in 1 call</span>
       </div>
+
+      <!-- Persona Choice Selector (Male / Female) -->
+      <div class="persona-selector-bar">
+        <button class="persona-pill active" id="portal-btn-emma" onclick="switchPersona('female')">👩 Emma (Female)</button>
+        <button class="persona-pill" id="portal-btn-david" onclick="switchPersona('male')">👨 David (Male)</button>
+      </div>
+
       <!-- SDK Mount Target -->
       <div id="ai-concierge-slot"></div>
     </aside>

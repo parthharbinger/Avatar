@@ -4,6 +4,7 @@
  * with voice input, conversational LLM, and photorealistic D-ID WebRTC video stream in a single function call.
  */
 import { AvatarClient } from "./client";
+import { Renderer2D } from "./renderer2d";
 
 export interface AvatarWidgetOptions {
   /** Target container element or CSS selector string (e.g. "#ai-assistant") */
@@ -12,7 +13,7 @@ export interface AvatarWidgetOptions {
   floating?: boolean;
   /** Server URL of the avatar backend, e.g. "http://localhost:8000" */
   serverUrl?: string;
-  /** Avatar engine: 'd-id' (Photorealistic WebRTC Video) or 'canvas' ($0 2D Engine). Default: 'd-id' */
+  /** Avatar engine: 'd-id' (Photorealistic WebRTC Video) or 'canvas' (2D Neural Engine). Default: 'd-id' */
   engine?: "d-id" | "webrtc" | "canvas" | "edge-tts" | "heygen";
   /** Avatar persona: 'emma' / 'female', 'david' / 'male', or custom image URL */
   avatar?: string;
@@ -28,6 +29,7 @@ export interface AvatarWidgetOptions {
 
 export class AvatarWidget {
   private client: AvatarClient | null = null;
+  private renderer: Renderer2D | null = null;
   private container: HTMLElement;
   private rootEl: HTMLElement;
   private videoEl: HTMLVideoElement | null = null;
@@ -46,15 +48,17 @@ export class AvatarWidget {
   constructor(options: AvatarWidgetOptions = {}) {
     const serverUrl = options.serverUrl || "http://localhost:8000";
     const engine = options.engine || "d-id";
+    const avatar = options.avatar || "female";
+    const isMale = avatar === "male" || avatar === "david";
 
     this.options = {
       target: options.target || document.body,
       floating: options.floating ?? false,
       serverUrl,
       engine,
-      avatar: options.avatar || "female",
-      voice: options.voice || (options.avatar === "male" || options.avatar === "david" ? "en-US-ChristopherNeural" : "en-US-JennyNeural"),
-      title: options.title || "AI Concierge",
+      avatar,
+      voice: options.voice || (isMale ? "en-US-ChristopherNeural" : "en-US-JennyNeural"),
+      title: options.title || (isMale ? "David — AI Concierge" : "Emma — AI Concierge"),
       welcomeMessage: options.welcomeMessage || "Hello! How can I assist you today?",
       systemPrompt: options.systemPrompt || "You are a helpful, friendly AI concierge. Keep answers concise (1-2 sentences).",
     };
@@ -72,6 +76,11 @@ export class AvatarWidget {
     this.canvasSlot = this.rootEl.querySelector(".avatar-widget-canvas-slot") as HTMLElement;
     this.videoEl = this.rootEl.querySelector(".avatar-widget-video") as HTMLVideoElement;
 
+    // ── Instantly Mount Canvas Renderer so the Face is NEVER a blank black box ──
+    if (this.canvasSlot) {
+      this.renderer = new Renderer2D(this.canvasSlot, this.options.avatar);
+    }
+
     this._setupSpeechRecognition();
     this._bindEvents();
   }
@@ -80,17 +89,72 @@ export class AvatarWidget {
   async init(): Promise<void> {
     const isWebRTC = this.options.engine === "d-id" || this.options.engine === "webrtc" || this.options.engine === "heygen";
 
+    // 1. Always initialize the fallback WebSocket client for zero-latency neural audio & 2D lip-sync
+    await this._initCanvasStream();
+
+    // 2. If WebRTC mode is selected, also negotiate the live WebRTC video stream
     if (isWebRTC) {
       await this._initWebRTCStream();
+    }
+  }
+
+  /** Switch between Male (David) and Female (Emma) personas dynamically */
+  async setAvatar(avatarId: string): Promise<void> {
+    const lower = avatarId.toLowerCase();
+    const isMale = lower === "male" || lower === "david";
+    const normId = isMale ? "male" : "female";
+
+    this.options.avatar = normId;
+    this.options.voice = isMale ? "en-US-ChristopherNeural" : "en-US-JennyNeural";
+    this.options.title = isMale ? "David — AI Concierge" : "Emma — AI Concierge";
+
+    // Update Header Title
+    const titleEl = this.rootEl.querySelector(".avatar-widget-title") as HTMLElement;
+    if (titleEl) titleEl.textContent = this.options.title;
+
+    // Update Avatar Persona Toolbar Buttons
+    const btnFem = this.rootEl.querySelector(".btn-persona-female") as HTMLElement;
+    const btnMale = this.rootEl.querySelector(".btn-persona-male") as HTMLElement;
+    if (btnFem && btnMale) {
+      if (isMale) {
+        btnMale.classList.add("active");
+        btnFem.classList.remove("active");
+      } else {
+        btnFem.classList.add("active");
+        btnMale.classList.remove("active");
+      }
+    }
+
+    // Update Canvas Portrait
+    if (this.renderer) {
+      this.renderer.setImage(normId);
+    }
+
+    // If WebRTC is active, re-negotiate stream for new persona
+    const isWebRTC = this.options.engine === "d-id" || this.options.engine === "webrtc" || this.options.engine === "heygen";
+    if (isWebRTC) {
+      if (this.videoEl) this.videoEl.style.display = "none";
+      await this._initWebRTCStream();
+    }
+  }
+
+  /** Switch rendering engine at runtime ('d-id' vs 'canvas') */
+  async setEngine(engine: "d-id" | "canvas" | "webrtc" | "edge-tts"): Promise<void> {
+    this.options.engine = engine as any;
+    const engineSelect = this.rootEl.querySelector(".avatar-widget-engine-select") as HTMLSelectElement;
+    if (engineSelect) engineSelect.value = engine === "canvas" || engine === "edge-tts" ? "canvas" : "d-id";
+
+    if (engine === "canvas" || engine === "edge-tts") {
+      if (this.videoEl) this.videoEl.style.display = "none";
+      this._setStatus("Online ✓ (2D Canvas)", "ok");
     } else {
-      await this._initCanvasStream();
+      await this._initWebRTCStream();
     }
   }
 
   /** Initialize Photorealistic D-ID WebRTC Video Stream */
   private async _initWebRTCStream(): Promise<void> {
-    this._setStatus("Connecting WebRTC Stream...", "");
-    if (this.videoEl) this.videoEl.style.display = "block";
+    this._setStatus("Connecting WebRTC Live Stream...", "");
 
     try {
       if (this.peerConnection) {
@@ -109,7 +173,7 @@ export class AvatarWidget {
       this.activeSessionId = sessData.session_id;
 
       // 2. Fetch WebRTC Offer from backend adapter (D-ID / HeyGen)
-      const provider = this.options.engine;
+      const provider = this.options.engine === "canvas" || this.options.engine === "edge-tts" ? "d-id" : this.options.engine;
       const offerResp = await fetch(
         `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/offer?avatar_id=${this.options.avatar}&provider=${provider}`,
         { method: "POST" }
@@ -131,9 +195,9 @@ export class AvatarWidget {
       this.peerConnection.ontrack = (event) => {
         if (event.track.kind === "video" && this.videoEl) {
           this.videoEl.srcObject = event.streams[0];
+          this.videoEl.style.display = "block";
           this.videoEl.play().catch(console.warn);
-          this._setStatus("Online ✓ (Live Video Stream)", "ok");
-          this._triggerGreeting();
+          this._setStatus("Online ✓ (D-ID Live Video)", "ok");
         }
       };
 
@@ -157,7 +221,8 @@ export class AvatarWidget {
           this.peerConnection?.connectionState === "failed" ||
           this.peerConnection?.connectionState === "closed"
         ) {
-          this._setStatus("Stream idle. Reconnecting...", "");
+          this._setStatus("Live stream idle (2D Fallback Ready)", "ok");
+          if (this.videoEl) this.videoEl.style.display = "none";
         }
       };
 
@@ -177,72 +242,75 @@ export class AvatarWidget {
         }),
       });
 
-      this._setStatus("WebRTC Connected ✓ Waiting for video...", "ok");
+      this._setStatus("WebRTC Connected ✓ Waiting for video track...", "ok");
 
     } catch (err: any) {
-      console.error("[AvatarWidget] WebRTC Stream Error:", err);
-      this._setStatus(`Connection error: ${err.message}`, "error");
+      console.warn("[AvatarWidget] WebRTC init note (using 2D fallback):", err.message);
+      this._setStatus("Online ✓ (2D Canvas Audio)", "ok");
+      if (this.videoEl) this.videoEl.style.display = "none";
     }
   }
 
-  /** Initialize 2D Canvas Fallback Stream */
+  /** Initialize 2D Canvas Stream via WebSocket */
   private async _initCanvasStream(): Promise<void> {
-    if (this.videoEl) this.videoEl.style.display = "none";
     const wsUrl = this.options.serverUrl.replace("https://", "wss://").replace("http://", "ws://");
+
+    if (this.client) {
+      try { await this.client.destroy(); } catch(e){}
+    }
 
     this.client = new AvatarClient({
       serverUrl: wsUrl,
       avatarId: this.options.avatar,
     });
 
-    if (this.canvasSlot) {
-      this.client.mount(this.canvasSlot, this.options.avatar);
-    }
-
     try {
-      this._setStatus("Connecting...", "");
       await this.client.connect();
+      if (this.canvasSlot && !this.renderer) {
+        this.client.mount(this.canvasSlot, this.options.avatar);
+      }
       this._setStatus("Online ✓", "ok");
-      this._triggerGreeting();
     } catch (err: any) {
-      this._setStatus("Offline (Click to retry)", "error");
-      console.error("[AvatarWidget] Canvas connection error:", err);
-    }
-  }
-
-  private _triggerGreeting(): void {
-    if (this.options.welcomeMessage) {
-      this.addMessage("avatar", this.options.welcomeMessage);
-      setTimeout(() => {
-        this.speak(this.options.welcomeMessage);
-      }, 500);
+      console.warn("[AvatarWidget] Canvas client connect error:", err);
     }
   }
 
   /** Speak arbitrary text through active avatar stream */
   async speak(text: string): Promise<void> {
     this._setStatus("Speaking...", "speaking");
+    let spokenViaWebRTC = false;
 
-    if (this.activeStreamId) {
-      // WebRTC Stream speak endpoint (D-ID / HeyGen)
+    const isWebRTC = this.options.engine === "d-id" || this.options.engine === "webrtc";
+
+    if (isWebRTC && this.activeStreamId && this.peerConnection?.connectionState === "connected") {
       try {
-        await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/speak?provider=${this.options.engine}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            stream_id: this.activeStreamId,
-            text: text,
-            voice: this.options.voice,
-            provider_session_id: this.providerSessionId,
-          }),
-        });
-        setTimeout(() => this._setStatus("Online ✓", "ok"), 3500);
-      } catch (err: any) {
-        console.error("[AvatarWidget] Speak error:", err);
-        this._setStatus("Speak error", "error");
+        const resp = await fetch(
+          `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/speak?provider=${this.options.engine}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              stream_id: this.activeStreamId,
+              text: text,
+              voice: this.options.voice,
+              provider_session_id: this.providerSessionId,
+            }),
+          }
+        );
+        if (resp.ok) {
+          spokenViaWebRTC = true;
+          setTimeout(() => this._setStatus("Online ✓", "ok"), 3500);
+        }
+      } catch (err) {
+        console.warn("[AvatarWidget] WebRTC speak failed, falling back to 2D Audio:", err);
       }
-    } else if (this.client) {
+    }
+
+    // Seamless Fallback: if WebRTC not connected or failed, play via HD Neural Audio on Canvas
+    if (!spokenViaWebRTC && this.client) {
+      if (this.videoEl) this.videoEl.style.display = "none";
       this.client.speak(text, { voice: this.options.voice });
+      setTimeout(() => this._setStatus("Online ✓", "ok"), 3000);
     }
   }
 
@@ -291,7 +359,10 @@ export class AvatarWidget {
 
     const bubble = document.createElement("div");
     bubble.className = `avatar-msg avatar-msg-${role}`;
-    bubble.innerHTML = role === "user" ? `<b>You:</b> ${this._escape(text)}` : `<b>${this._escape(this.options.title)}:</b> ${this._escape(text)}`;
+    bubble.innerHTML =
+      role === "user"
+        ? `<b>You:</b> ${this._escape(text)}`
+        : `<b>${this._escape(this.options.title)}:</b> ${this._escape(text)}`;
     historyEl.appendChild(bubble);
     historyEl.scrollTop = historyEl.scrollHeight;
   }
@@ -306,6 +377,7 @@ export class AvatarWidget {
 
   private _renderWidgetDOM(): HTMLElement {
     const isFloating = this.options.floating;
+    const isMale = this.options.avatar === "male" || this.options.avatar === "david";
     const wrapper = document.createElement("div");
     wrapper.className = `avatar-widget-root ${isFloating ? "floating-widget" : "inline-widget"}`;
 
@@ -317,7 +389,7 @@ export class AvatarWidget {
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
-          background: rgba(15, 23, 42, 0.92);
+          background: rgba(15, 23, 42, 0.94);
           backdrop-filter: blur(16px);
           border: 1px solid rgba(255, 255, 255, 0.12);
           border-radius: 20px;
@@ -337,12 +409,12 @@ export class AvatarWidget {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 12px 16px;
-          background: rgba(30, 41, 59, 0.8);
+          padding: 10px 14px;
+          background: rgba(30, 41, 59, 0.85);
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
         .avatar-widget-title {
-          font-size: 0.9rem;
+          font-size: 0.88rem;
           font-weight: 700;
           display: flex;
           align-items: center;
@@ -372,10 +444,43 @@ export class AvatarWidget {
           overflow: hidden;
         }
         .avatar-widget-video {
+          position: absolute;
+          top: 0;
+          left: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: none;
+          z-index: 5;
+        }
+        .avatar-widget-toolbar {
+          position: absolute;
+          bottom: 8px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          gap: 6px;
+          background: rgba(15, 23, 42, 0.85);
+          backdrop-filter: blur(8px);
+          padding: 4px 8px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.15);
+          z-index: 10;
+        }
+        .avatar-persona-btn {
+          background: transparent;
+          border: none;
+          color: #94a3b8;
+          font-size: 0.75rem;
+          font-weight: 600;
+          padding: 3px 8px;
+          border-radius: 999px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .avatar-persona-btn.active {
+          background: #6366f1;
+          color: #ffffff;
         }
         .avatar-widget-history {
           height: 100px;
@@ -452,8 +557,14 @@ export class AvatarWidget {
       </div>
       <div class="avatar-widget-canvas-slot">
         <video class="avatar-widget-video" autoplay playsinline></video>
+        <div class="avatar-widget-toolbar">
+          <button class="avatar-persona-btn btn-persona-female ${!isMale ? "active" : ""}">👩 Emma</button>
+          <button class="avatar-persona-btn btn-persona-male ${isMale ? "active" : ""}">👨 David</button>
+        </div>
       </div>
-      <div class="avatar-widget-history"></div>
+      <div class="avatar-widget-history">
+        <div class="avatar-msg avatar-msg-avatar"><b>${this._escape(this.options.title)}:</b> ${this._escape(this.options.welcomeMessage)}</div>
+      </div>
       <div class="avatar-widget-input-bar">
         <input class="avatar-widget-input" type="text" placeholder="Ask me anything..." />
         <button class="avatar-widget-btn btn-widget-mic" title="Voice Input">🎙️</button>
@@ -495,6 +606,8 @@ export class AvatarWidget {
     const input = this.rootEl.querySelector(".avatar-widget-input") as HTMLInputElement;
     const sendBtn = this.rootEl.querySelector(".btn-widget-send") as HTMLButtonElement;
     const micBtn = this.rootEl.querySelector(".btn-widget-mic") as HTMLButtonElement;
+    const btnFem = this.rootEl.querySelector(".btn-persona-female") as HTMLButtonElement;
+    const btnMale = this.rootEl.querySelector(".btn-persona-male") as HTMLButtonElement;
 
     const handleSend = () => {
       const text = input.value.trim();
@@ -508,9 +621,16 @@ export class AvatarWidget {
       if (e.key === "Enter") handleSend();
     };
 
+    if (btnFem) {
+      btnFem.onclick = () => this.setAvatar("female");
+    }
+    if (btnMale) {
+      btnMale.onclick = () => this.setAvatar("male");
+    }
+
     micBtn.onclick = () => {
       if (!this.recognition) {
-        alert("Speech recognition not supported in this browser.");
+        alert("Speech recognition not supported in this browser. Please type your message.");
         return;
       }
       if (this.isListening) {
@@ -520,7 +640,7 @@ export class AvatarWidget {
         this.isListening = true;
         micBtn.classList.add("listening");
         micBtn.textContent = "🔴";
-        this._setStatus("Listening...", "speaking");
+        this._setStatus("Listening to your voice...", "speaking");
       }
     };
   }
@@ -536,6 +656,9 @@ export class AvatarWidget {
     }
     if (this.client) {
       await this.client.destroy();
+    }
+    if (this.renderer) {
+      this.renderer.destroy();
     }
     this.rootEl.remove();
   }
