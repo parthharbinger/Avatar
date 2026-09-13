@@ -212,17 +212,18 @@ export class AvatarWidget {
       this.activeStreamId = offerData.stream_id;
       this.providerSessionId = offerData.did_session_id;
 
-      // ── Anam.ai Gateway Session Token Handshake ──
+      // ── Anam.ai Direct Persona Streaming Handshake ──
       if (provider === "anam") {
-        const sessionToken = offerData.session_token || (offerData.offer && offerData.offer.session_token);
-        if (!sessionToken) throw new Error("No Anam session token received from server");
+        const apiKey = offerData.api_key;
+        const personaId = offerData.persona_id;
+        const personaConfig = offerData.persona_config || { personaId };
 
         if (this.anamClient) {
           try { await this.anamClient.stopStreaming(); } catch (e) {}
         }
 
-        const { createClient } = await import("@anam-ai/js-sdk");
-        this.anamClient = createClient(sessionToken);
+        const { unsafe_createClientWithApiKey } = await import("@anam-ai/js-sdk");
+        this.anamClient = unsafe_createClientWithApiKey(apiKey, personaConfig);
 
         if (this.videoEl) {
           this.videoEl.style.display = "block";

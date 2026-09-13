@@ -1120,15 +1120,16 @@
           }
 
           const offerData = await offerResp.json();
-          const sessionToken = offerData.session_token || (offerData.offer && offerData.offer.session_token);
-          if (!sessionToken) throw new Error("No Anam session token returned");
+          const apiKey = offerData.api_key;
+          const personaId = offerData.persona_id;
+          const personaConfig = offerData.persona_config || { personaId };
 
-          const { createClient } = await import("https://esm.sh/@anam-ai/js-sdk");
+          const { unsafe_createClientWithApiKey } = await import("https://esm.sh/@anam-ai/js-sdk");
           if (anamClient) {
             try { await anamClient.stopStreaming(); } catch(e){}
           }
 
-          anamClient = createClient(sessionToken);
+          anamClient = unsafe_createClientWithApiKey(apiKey, personaConfig);
           renderer.hide();
           videoEl.style.display = "block";
           videoEl.id = "avatar-video";

@@ -151,6 +151,9 @@ class WebRTCOfferResponse(BaseModel):
     ice_servers: Optional[list] = None
     did_session_id: Optional[str] = None
     session_token: Optional[str] = None
+    api_key: Optional[str] = None
+    persona_id: Optional[str] = None
+    persona_config: Optional[Dict[str, Any]] = None
 
 
 class WebRTCAnswerRequest(BaseModel):
