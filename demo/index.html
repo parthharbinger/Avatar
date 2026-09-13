@@ -843,6 +843,7 @@
 
     let socket = null;
     let peerConnection = null;
+    let anamClient = null;
     let activeSessionId = null;
     let activeStreamId = null;
     let providerSessionId = null;
@@ -1106,8 +1107,40 @@
             btnInterrupt.disabled = true;
           };
 
+        } else if (engine === "anam") {
+          // ── Anam.ai Digital Human WebRTC Stream Mode ──
+          setStatus(`Initializing Anam.ai session (${currentAvatarId.toUpperCase()})...`, "");
+          
+          const offerResp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/offer?avatar_id=${currentAvatarId}&provider=anam`, {
+            method: "POST"
+          });
+          if (!offerResp.ok) {
+            const err = await offerResp.json();
+            throw new Error(err.detail || "Anam.ai session token creation failed. Check ANAM_API_KEY in .env");
+          }
+
+          const offerData = await offerResp.json();
+          const sessionToken = offerData.session_token || (offerData.offer && offerData.offer.session_token);
+          if (!sessionToken) throw new Error("No Anam session token returned");
+
+          const { createClient } = await import("https://esm.sh/@anam-ai/js-sdk");
+          if (anamClient) {
+            try { await anamClient.stopStreaming(); } catch(e){}
+          }
+
+          anamClient = createClient(sessionToken);
+          renderer.hide();
+          videoEl.style.display = "block";
+          videoEl.id = "avatar-video";
+          await anamClient.streamToVideoElement("avatar-video");
+
+          setStatus("Connected ✓ Anam.ai Digital Human Live WebRTC", "ok");
+          btnSpeak.disabled = false;
+          btnInterrupt.disabled = false;
+          btnConnect.disabled = true;
+
         } else {
-          // ── WebRTC 3rd-Party Video Mode (D-ID / HeyGen) ──
+          // ── WebRTC 3rd-Party Video Mode (D-ID / Simli / Akool / HeyGen) ──
           setStatus(`Initializing WebRTC stream (${engine.toUpperCase()} - ${currentAvatarId.toUpperCase()})...`, "");
           
           const offerResp = await fetch(`http://localhost:8000/api/v1/sessions/${activeSessionId}/webrtc/offer?avatar_id=${currentAvatarId}&provider=${engine}`, {
@@ -1231,6 +1264,15 @@
       if (engine === "edge-tts" && socket) {
         socket.send(JSON.stringify({ action: "speak", text: textToSpeak, voice }));
         setStatus("Speaking...", "speaking");
+      } else if (engine === "anam" && anamClient) {
+        setStatus("Speaking (Anam.ai Digital Human)...", "speaking");
+        try {
+          await anamClient.talk(textToSpeak);
+          statTtff.textContent = `< 350 ms`;
+          setTimeout(() => setStatus("Online ✓ Anam.ai Ready", "ok"), 3000);
+        } catch (e) {
+          setStatus("Anam speak error: " + e.message, "error");
+        }
       } else if (activeStreamId) {
         setStatus(`Speaking (${engine.toUpperCase()} Live Stream)...`, "speaking");
         try {
@@ -1260,6 +1302,9 @@
     btnInterrupt.addEventListener("click", () => {
       if (socket) {
         socket.send(JSON.stringify({ action: "interrupt" }));
+      }
+      if (anamClient) {
+        try { anamClient.interruptPersona(); } catch(e){}
       }
       audio.stop();
       stopVisemeSync();

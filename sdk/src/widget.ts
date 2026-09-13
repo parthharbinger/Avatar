@@ -43,6 +43,7 @@ export class AvatarWidget {
 
   // WebRTC Streaming State (D-ID / Simli / Anam / Akool / HeyGen)
   private peerConnection: RTCPeerConnection | null = null;
+  private anamClient: any = null;
   private activeSessionId: string | null = null;
   private activeStreamId: string | null = null;
   private providerSessionId: string | null = null;
@@ -211,6 +212,27 @@ export class AvatarWidget {
       this.activeStreamId = offerData.stream_id;
       this.providerSessionId = offerData.did_session_id;
 
+      // ── Anam.ai Gateway Session Token Handshake ──
+      if (provider === "anam") {
+        const sessionToken = offerData.session_token || (offerData.offer && offerData.offer.session_token);
+        if (!sessionToken) throw new Error("No Anam session token received from server");
+
+        if (this.anamClient) {
+          try { await this.anamClient.stopStreaming(); } catch (e) {}
+        }
+
+        const { createClient } = await import("@anam-ai/js-sdk");
+        this.anamClient = createClient(sessionToken);
+
+        if (this.videoEl) {
+          this.videoEl.style.display = "block";
+          this.videoEl.id = this.videoEl.id || ("anam-video-" + Math.random().toString(36).substring(2, 9));
+          await this.anamClient.streamToVideoElement(this.videoEl.id);
+          this._setStatus("Online ✓ (ANAM.AI Digital Human)", "ok");
+        }
+        return;
+      }
+
       // 3. Setup RTCPeerConnection
       this.peerConnection = new RTCPeerConnection({
         iceServers: offerData.ice_servers || [{ urls: ["stun:stun.l.google.com:19302"] }],
@@ -301,6 +323,19 @@ export class AvatarWidget {
     const provider = this.options.engine === "webrtc" ? "d-id" : this.options.engine;
     this._setStatus(`Speaking (${provider.toUpperCase()})...`, "speaking");
 
+    // If Anam.ai engine is active, use Anam data channel talk command
+    if (provider === "anam" && this.anamClient) {
+      this._setStatus("Speaking (ANAM.AI)...", "speaking");
+      try {
+        await this.anamClient.talk(text);
+        setTimeout(() => this._setStatus("Online ✓", "ok"), 3000);
+      } catch (err: any) {
+        console.error("[AvatarWidget] Anam speak error:", err);
+        this._setStatus("Speak error", "error");
+      }
+      return;
+    }
+
     // If WebRTC stream is not active or closed, reconnect first
     if (this.options.engine !== "canvas" && this.options.engine !== "edge-tts") {
       if (!this.activeStreamId || this.peerConnection?.connectionState !== "connected") {
@@ -387,6 +422,9 @@ export class AvatarWidget {
   /** Interrupt current speech */
   interrupt(): void {
     if (this.client) this.client.interrupt();
+    if (this.anamClient) {
+      try { this.anamClient.interruptPersona(); } catch (e) {}
+    }
     this._setStatus("Interrupted", "");
   }
 
@@ -721,8 +759,12 @@ export class AvatarWidget {
 
   /** Destroy widget and clean up DOM */
   async destroy(): Promise<void> {
+    if (this.anamClient) {
+      try { await this.anamClient.stopStreaming(); } catch (e) {}
+      this.anamClient = null;
+    }
     if (this.peerConnection) {
-      try { this.peerConnection.close(); } catch(e){}
+      try { this.peerConnection.close(); } catch (e) {}
     }
     if (this.client) {
       await this.client.destroy();

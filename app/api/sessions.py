@@ -150,6 +150,7 @@ class WebRTCOfferResponse(BaseModel):
     offer: Optional[Dict[str, Any]] = None
     ice_servers: Optional[list] = None
     did_session_id: Optional[str] = None
+    session_token: Optional[str] = None
 
 
 class WebRTCAnswerRequest(BaseModel):
