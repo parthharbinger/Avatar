@@ -2,16 +2,21 @@
 FastAPI application entrypoint.
 Configures CORS, mounts all routers, and manages session lifecycle via lifespan context.
 """
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.logging_config import setup_logging, get_logger
 from app.sessions.manager import session_manager
 from app.api.sessions import router as sessions_router
 from app.api.websocket import router as websocket_router
+from app.api.conversation import router as conversation_router
+from app.api.heygen_video import router as heygen_video_router
 
 # Setup structured JSON logging before anything else runs
 setup_logging()
@@ -26,15 +31,35 @@ async def lifespan(app: FastAPI):
         extra={"event": "startup", "environment": settings.environment},
     )
     await session_manager.start()
+
+    # Pretty-printed clickable terminal banner with all URLs
+    host_url = f"http://localhost:{settings.port}"
+    banner = f"""
+======================================================================
+  🤖 REAL-TIME INTERACTIVE AI AVATAR PLATFORM
+======================================================================
+  👉 Interactive Live Demo:    {host_url}/demo/
+  👉 Apex Travel Demo Client:  http://localhost:5173/
+  👉 Swagger API Docs:         {host_url}/docs
+  👉 ReDoc Documentation:      {host_url}/redoc
+  👉 Health Check:             {host_url}/health
+  👉 OpenAPI JSON Schema:      {host_url}/openapi.json
+======================================================================
+  🎬 Active Avatar Provider:   {settings.avatar_provider.upper()}
+  🎙️ TTS Voice Engine:        {settings.edge_tts_voice} ({settings.tts_provider})
+======================================================================
+"""
+    print(banner, flush=True)
+
     yield
     logger.info("Shutting down", extra={"event": "shutdown"})
     await session_manager.stop()
 
 
 app = FastAPI(
-    title="Real-Time 2D AI Avatar API",
-    description="Microservice for real-time avatar generation and streaming via WebSocket.",
-    version="0.1.0",
+    title="Real-Time Interactive AI Avatar Platform",
+    description="Microservice for real-time interactive avatar video streaming (D-ID, Simli, Anam.ai, Akool, HeyGen) and 2D neural canvas.",
+    version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -49,12 +74,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-import os
-from fastapi.staticfiles import StaticFiles
-
-from app.api.conversation import router as conversation_router
-from app.api.heygen_video import router as heygen_video_router
 
 # Mount routers
 app.include_router(sessions_router)
@@ -74,6 +93,12 @@ if os.path.exists(assets_dir):
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 if os.path.exists(sdk_dist_dir):
     app.mount("/sdk", StaticFiles(directory=sdk_dist_dir), name="sdk")
+
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    """Redirect root path directly to interactive demo UI."""
+    return RedirectResponse(url="/demo/")
 
 
 @app.get("/health", tags=["Health"])
