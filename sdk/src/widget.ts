@@ -26,6 +26,9 @@ export interface AvatarWidgetOptions {
   systemPrompt?: string;
 }
 
+const DID_POSTER_FEMALE = "https://clips-presenters.d-id.com/v2/Alyssa_NoHands_BlackShirt_Home/Mvn6Nalx90/y0J6MTfOaZ/image.png";
+const DID_POSTER_MALE = "https://clips-presenters.d-id.com/v2/Adam/0GLJgELXjc/j0HIbyxjap/image.png";
+
 export class AvatarWidget {
   private client: AvatarClient | null = null;
   private renderer: Renderer2D | null = null;
@@ -76,8 +79,14 @@ export class AvatarWidget {
     this.canvasSlot = this.rootEl.querySelector(".avatar-widget-canvas-slot") as HTMLElement;
     this.videoEl = this.rootEl.querySelector(".avatar-widget-video") as HTMLVideoElement;
 
-    // Show initial portrait placeholder until WebRTC video stream renders
-    if (this.canvasSlot) {
+    // Configure Pure D-ID video element with official D-ID Presenter Poster
+    if (this.videoEl) {
+      this.videoEl.poster = isMale ? DID_POSTER_MALE : DID_POSTER_FEMALE;
+      this.videoEl.style.display = "block";
+    }
+
+    // Only mount 2D canvas if explicitly configured with engine: "canvas"
+    if ((this.options.engine === "canvas" || this.options.engine === "edge-tts") && this.canvasSlot) {
       this.renderer = new Renderer2D(this.canvasSlot, this.options.avatar);
     }
 
@@ -121,13 +130,14 @@ export class AvatarWidget {
       }
     }
 
-    // Update placeholder canvas
-    if (this.renderer) {
-      this.renderer.setImage(normId);
+    // Update D-ID Presenter Poster immediately
+    if (this.videoEl) {
+      this.videoEl.poster = isMale ? DID_POSTER_MALE : DID_POSTER_FEMALE;
+      this.videoEl.srcObject = null;
     }
 
-    if (this.videoEl) {
-      this.videoEl.style.display = "none";
+    if (this.renderer) {
+      this.renderer.setImage(normId);
     }
 
     // Re-create D-ID WebRTC Stream for the selected persona
@@ -141,8 +151,18 @@ export class AvatarWidget {
     this.options.engine = engine as any;
     if (engine === "canvas" || engine === "edge-tts") {
       if (this.videoEl) this.videoEl.style.display = "none";
+      if (!this.renderer && this.canvasSlot) {
+        this.renderer = new Renderer2D(this.canvasSlot, this.options.avatar);
+      }
       await this._initCanvasStream();
     } else {
+      if (this.renderer) {
+        this.renderer.destroy();
+        this.renderer = null;
+      }
+      if (this.videoEl) {
+        this.videoEl.style.display = "block";
+      }
       await this._initDIDStream();
     }
   }
@@ -451,14 +471,11 @@ export class AvatarWidget {
           overflow: hidden;
         }
         .avatar-widget-video {
-          position: absolute;
-          top: 0;
-          left: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
-          display: none;
-          z-index: 5;
+          display: block;
+          background: #090d16;
         }
         .avatar-widget-toolbar {
           position: absolute;
