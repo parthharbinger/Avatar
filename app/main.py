@@ -18,6 +18,7 @@ from app.api.websocket import router as websocket_router
 from app.api.conversation import router as conversation_router
 from app.api.heygen_video import router as heygen_video_router
 from app.api.costs import router as costs_router
+from app.api.profiles import router as profiles_router
 
 # Setup structured JSON logging before anything else runs
 setup_logging()
@@ -82,6 +83,7 @@ app.include_router(websocket_router)
 app.include_router(conversation_router)
 app.include_router(heygen_video_router)
 app.include_router(costs_router)
+app.include_router(profiles_router)
 
 # Mount demo page, assets, and SDK dist
 base_dir = os.path.dirname(os.path.dirname(__file__))

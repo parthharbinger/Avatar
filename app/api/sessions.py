@@ -274,6 +274,33 @@ async def webrtc_speak(session_id: str, body: WebRTCSpeakRequest, provider: Opti
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@router.post(
+    "/sessions/{session_id}/webrtc/interrupt",
+    summary="Interrupt WebRTC Avatar Speech (Barge-In)",
+    description="Stop avatar speech immediately in response to user voice barge-in.",
+)
+async def webrtc_interrupt(session_id: str, provider: Optional[str] = None):
+    provider_adapter = get_avatar_provider(provider)
+    if not provider_adapter:
+        return {"status": "ignored", "reason": "no webrtc provider"}
+
+    # Try to get stream_id from session
+    stream_id = None
+    try:
+        session = await session_manager.get_session(session_id)
+        stream_id = getattr(session, "stream_id", None)
+    except Exception:
+        pass
+
+    try:
+        if stream_id:
+            await provider_adapter.interrupt(stream_id=stream_id, session_id=session_id)
+        return {"status": "interrupted"}
+    except Exception as e:
+        logger.warning(f"WebRTC interrupt error: {e}")
+        return {"status": "error", "detail": str(e)}
+
+
 @router.delete(
     "/sessions/{session_id}",
     status_code=status.HTTP_204_NO_CONTENT,

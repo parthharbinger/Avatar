@@ -102,3 +102,55 @@ async def test_estimate_costs():
     assert data["total_streaming_minutes"] == 10000
     assert "comparison_breakdown" in data
     assert "edge-tts" in data["comparison_breakdown"]
+
+
+@pytest.mark.asyncio
+async def test_profiles_crud_and_rag():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # 1. Create Profile
+        create_resp = await client.post(
+            "/api/v1/profiles",
+            json={"name": "AI Expert Adam", "persona": "male", "system_prompt": "You are a test expert."}
+        )
+        assert create_resp.status_code == 201
+        p_data = create_resp.json()
+        profile_id = p_data["profile_id"]
+        assert p_data["name"] == "AI Expert Adam"
+        assert p_data["persona"] == "male"
+
+        # 2. Get Profile
+        get_resp = await client.get(f"/api/v1/profiles/{profile_id}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["profile_id"] == profile_id
+
+        # 3. List Profiles
+        list_resp = await client.get("/api/v1/profiles")
+        assert list_resp.status_code == 200
+        assert any(p["profile_id"] == profile_id for p in list_resp.json())
+
+        # 4. Upload & Index a Document
+        file_content = b"Apex Global Travel baggage policy allows one free carry-on up to 10kg."
+        files = {"file": ("baggage_policy.txt", file_content, "text/plain")}
+        doc_resp = await client.post(f"/api/v1/profiles/{profile_id}/documents", files=files)
+        assert doc_resp.status_code == 200
+        doc_data = doc_resp.json()
+        assert doc_data["status"] == "indexed"
+        assert doc_data["profile"]["documents"][0]["filename"] == "baggage_policy.txt"
+
+        # 5. Delete Profile
+        del_resp = await client.delete(f"/api/v1/profiles/{profile_id}")
+        assert del_resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_webrtc_interrupt_endpoint():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Create a session
+        sess_resp = await client.post("/api/v1/sessions")
+        assert sess_resp.status_code == 201
+        session_id = sess_resp.json()["session_id"]
+
+        # Call interrupt endpoint
+        interrupt_resp = await client.post(f"/api/v1/sessions/{session_id}/webrtc/interrupt?provider=edge-tts")
+        assert interrupt_resp.status_code == 200
+

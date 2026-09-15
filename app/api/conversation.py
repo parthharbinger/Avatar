@@ -1,6 +1,7 @@
 """
 Conversational Chatbot & ASR API routes using Groq LLM and Whisper.
 Allows the avatar to respond intelligently to speech and text inputs.
+Supports RAG document context injection when a profile_id is supplied.
 """
 import os
 import aiohttp
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.logging_config import get_logger
+from app.services import rag_service
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1/chat", tags=["Conversation & ASR"])
@@ -26,6 +28,10 @@ class ChatRequest(BaseModel):
     system_prompt: Optional[str] = Field(
         default="You are an intelligent, friendly real-time AI avatar assistant. Keep your responses natural, engaging, and concise (1 to 2 sentences max) so they can be spoken quickly.",
         description="System prompt guiding persona",
+    )
+    profile_id: Optional[str] = Field(
+        default=None,
+        description="Avatar expert profile ID. When set, relevant document context is injected from the RAG knowledge base.",
     )
 
 
@@ -55,7 +61,23 @@ async def generate_response(body: ChatRequest):
         "User-Agent": "AvatarService/1.0",
     }
 
-    messages = [{"role": "system", "content": body.system_prompt}]
+    # ── RAG: inject document context when a profile is selected ──────────────
+    active_system_prompt = body.system_prompt
+    if body.profile_id:
+        try:
+            profile_meta = rag_service.get_profile(body.profile_id)
+            if profile_meta:
+                # Use profile's own system prompt if caller didn't override
+                if not body.system_prompt or body.system_prompt == ChatRequest.model_fields["system_prompt"].default:
+                    active_system_prompt = profile_meta.get("system_prompt", body.system_prompt)
+                # Retrieve relevant document context
+                doc_context = rag_service.retrieve_context(body.profile_id, body.message)
+                if doc_context:
+                    active_system_prompt = f"{active_system_prompt}\n\n{doc_context}"
+        except Exception as rag_err:
+            logger.warning("RAG context retrieval failed", extra={"error": str(rag_err)})
+
+    messages = [{"role": "system", "content": active_system_prompt}]
     for msg in body.history[-6:]:  # Keep last 6 turns for context
         messages.append({"role": msg.role, "content": msg.content})
     messages.append({"role": "user", "content": body.message})

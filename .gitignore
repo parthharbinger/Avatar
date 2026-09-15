@@ -45,3 +45,7 @@ node_modules/
 dist/
 **/dist/
 sdk/*.tgz
+
+# Runtime data & user uploads
+data/
+
