@@ -145,6 +145,32 @@ Expected output:
 
 ---
 
+### Option E: Azure Container Apps
+
+1. **Install Azure CLI** and log in:
+   ```bash
+   az login
+   ```
+2. **Create a Resource Group** and **Container Apps Environment**:
+   ```bash
+   az group create --name AvatarResourceGroup --location eastus
+   az containerapp env create --name avatar-env --resource-group AvatarResourceGroup --location eastus
+   ```
+3. **Build and Deploy**:
+   ```bash
+   az containerapp up \
+     --name avatar-service \
+     --resource-group AvatarResourceGroup \
+     --environment avatar-env \
+     --source . \
+     --ingress external \
+     --target-port 8000 \
+     --env-vars ENVIRONMENT=production GROQ_API_KEY=gsk_...
+   ```
+4. **WebSocket Support**: Azure Container Apps natively supports WebSockets without additional configuration when HTTP ingress is enabled.
+
+---
+
 ## 3. Reverse Proxy & SSL Configuration (Nginx / Caddy)
 
 When deploying behind an Nginx reverse proxy, ensure WebSocket upgrade headers are passed correctly so `ws://` and `wss://` connections persist without drops:
