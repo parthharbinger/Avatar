@@ -36,12 +36,13 @@ class SimliAvatarProvider(BaseAvatarProvider):
         if not self.api_key:
             raise ValueError("SIMLI_API_KEY is not configured in .env. Please add SIMLI_API_KEY to use Simli.")
 
-        face_id = self.face_id
-        if avatar_id and str(avatar_id).lower() in ("male", "david", "adam"):
-            face_id = "tmp9i8bbq7v"  # Simli standard male face ID
+        face_id = self.face_id or "default"
+        if avatar_id and avatar_id not in ("default", "ecommerce", "healthcare", "banking", "female", "male"):
+            face_id = avatar_id
 
         url = f"{self.BASE_URL}/startAudioToVideoSession"
         payload = {
+            "apiKey": self.api_key,
             "faceId": face_id,
             "isJPG": False,
             "syncAudio": True,
@@ -50,12 +51,16 @@ class SimliAvatarProvider(BaseAvatarProvider):
             "maxIdleTime": 300,
         }
 
-        logger.info("Creating Simli WebRTC stream", extra={"event": "simli_create_stream", "session_id": session_id})
+        logger.info("Creating Simli WebRTC stream", extra={"event": "simli_create_stream", "session_id": session_id, "face_id": face_id})
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=self._get_headers()) as resp:
                 if resp.status not in (200, 201):
                     err_text = await resp.text()
                     logger.error("Simli create stream failed", extra={"status": resp.status, "error": err_text})
+                    if "INVALID_FACE_ID" in err_text:
+                        raise RuntimeError(
+                            f"Invalid Simli Face ID ('{face_id}'). Please copy your active Face ID (UUID) from your Simli dashboard (https://app.simli.com) and update SIMLI_FACE_ID in your .env file."
+                        )
                     raise RuntimeError(f"Simli API error: {resp.status} - {err_text}")
 
                 data = await resp.json()
@@ -65,6 +70,9 @@ class SimliAvatarProvider(BaseAvatarProvider):
                 return {
                     "provider": "simli",
                     "stream_id": stream_id,
+                    "session_token": data.get("session_token"),
+                    "api_key": self.api_key,
+                    "face_id": face_id,
                     "offer": data.get("offer") or data.get("sdp"),
                     "ice_servers": data.get("ice_servers") or data.get("iceServers") or [{ "urls": ["stun:stun.l.google.com:19302"] }],
                     "did_session_id": stream_id,
@@ -74,6 +82,7 @@ class SimliAvatarProvider(BaseAvatarProvider):
         """Submit SDP answer to Simli."""
         url = f"{self.BASE_URL}/submitAnswer"
         payload = {
+            "apiKey": self.api_key,
             "sessionId": stream_id,
             "answer": answer_sdp,
         }
@@ -87,6 +96,7 @@ class SimliAvatarProvider(BaseAvatarProvider):
         """Submit ICE candidate to Simli."""
         url = f"{self.BASE_URL}/ice"
         payload = {
+            "apiKey": self.api_key,
             "sessionId": stream_id,
             "candidate": candidate,
         }
@@ -96,33 +106,26 @@ class SimliAvatarProvider(BaseAvatarProvider):
                     pass
 
     async def speak(self, stream_id: str, text: str, voice: Optional[str] = None, session_id: Optional[str] = None) -> None:
-        """Simli audio-to-video speak trigger."""
-        url = f"{self.BASE_URL}/speak"
-        payload = {
-            "sessionId": stream_id,
-            "text": text,
-            "voice": voice or "en-US-JennyNeural",
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=self._get_headers()) as resp:
-                if resp.status not in (200, 201):
-                    err_text = await resp.text()
-                    logger.error("Simli speak failed", extra={"status": resp.status, "error": err_text})
+        """
+        Simli audio-to-video speak trigger.
+        Simli renders speech from raw audio/PCM streamed directly over the WebRTC channel.
+        """
+        logger.info(
+            "Simli speech triggered",
+            extra={"event": "simli_speak", "stream_id": stream_id, "text_len": len(text), "voice": voice},
+        )
 
     async def interrupt(self, stream_id: str, session_id: Optional[str] = None) -> None:
         """Interrupt active Simli speech."""
-        url = f"{self.BASE_URL}/interrupt"
-        payload = {"sessionId": stream_id}
-        try:
-            async with aiohttp.ClientSession() as session:
-                await session.post(url, json=payload, headers=self._get_headers())
-        except Exception:
-            pass
+        logger.info("Simli interrupt", extra={"event": "simli_interrupt", "stream_id": stream_id})
 
     async def close_stream(self, stream_id: str, session_id: Optional[str] = None) -> None:
         """Close Simli session."""
         url = f"{self.BASE_URL}/closeSession"
-        payload = {"sessionId": stream_id}
+        payload = {
+            "apiKey": self.api_key,
+            "sessionId": stream_id,
+        }
         try:
             async with aiohttp.ClientSession() as session:
                 await session.post(url, json=payload, headers=self._get_headers())

@@ -57,8 +57,25 @@ class Settings(BaseSettings):
     akool_api_key: str = ""
     akool_client_id: str = ""
 
-    # LLM & ASR
+    # LLM & ASR (Groq & NVIDIA NIM)
     groq_api_key: str = ""
+    groq_model: str = "qwen/qwen3.8-27b"
+    nvidia_nim_api_key: str = ""
+    nvidia_nim_model: str = "meta/llama-3.2-11b-vision-instruct"
+    llm_provider: str = "groq"  # 'groq' | 'nvidia-nim'
+
+    # Authentication & Access Control (RBAC)
+    auth_enabled: bool = True
+    jwt_secret_key: str = "avatar_super_secret_jwt_key_change_in_production_32bytes"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 1440  # 24 hours
+    refresh_token_expire_days: int = 30
+    db_path: str = "data/avatar_auth.db"
+
+    # Default Admin Seed
+    admin_default_email: str = "admin@avatar.ai"
+    admin_default_password: str = "AdminPass123!"
+    admin_default_name: str = "System Administrator"
 
 
 # Global singleton

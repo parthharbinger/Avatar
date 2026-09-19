@@ -8,20 +8,38 @@ export interface AvatarClientOptions {
   serverUrl: string;
   /** Avatar identity to use. Defaults to "default". */
   avatarId?: string;
+  /** API Key for authenticated access (X-API-Key: ak_live_...) */
+  apiKey?: string;
+  /** Bearer JWT access token for user authentication */
+  token?: string;
   /** Milliseconds before reconnect is attempted on connection loss. Default: 2000 */
   reconnectDelayMs?: number;
   /** Max reconnect attempts before giving up. Default: 5 */
   maxReconnectAttempts?: number;
 }
 
-/** Viseme mouth shape names matching the backend's VisemeShape enum */
 export type VisemeShape =
   | "neutral"
   | "open"
   | "round"
   | "bilabial"
   | "labiodental"
-  | "dental";
+  | "dental"
+  | "aa"
+  | "E"
+  | "I"
+  | "O"
+  | "U"
+  | "PP"
+  | "FF"
+  | "SS"
+  | "TH"
+  | "DD"
+  | "kk"
+  | "CH"
+  | "nn"
+  | "RR"
+  | "sil";
 
 /** A single keyframe in the viseme animation timeline */
 export interface VisemeEvent {
@@ -108,7 +126,7 @@ export interface AvatarProfile {
 /** Options for creating a new avatar expert profile */
 export interface CreateProfileOptions {
   name: string;
-  persona?: "male" | "female";
+  persona?: "ecommerce" | "healthcare" | "banking" | "male" | "female" | string;
   system_prompt?: string;
 }
 

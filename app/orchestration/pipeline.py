@@ -16,6 +16,7 @@ from fastapi import WebSocket
 from app.tts import get_tts_adapter
 from app.viseme.mapper import map_text_to_visemes, from_word_boundaries
 from app.logging_config import get_logger
+from app.services.text_sanitizer import clean_text_for_speech
 
 logger = get_logger(__name__)
 
@@ -30,6 +31,7 @@ async def run_speech_pipeline(
     Full TTS → Viseme → Stream pipeline for one speech turn.
     """
     speech_id = speech_id or str(uuid.uuid4())
+    text = clean_text_for_speech(text)
     tts = get_tts_adapter()
 
     logger.info(

@@ -184,6 +184,10 @@ The microservice exposes programmatic cost calculation APIs:
 - `GET /api/v1/costs` — Returns real-time pricing assumptions and presets (1k, 10k, 100k users).
 - `POST /api/v1/costs/estimate` — Dynamically computes monthly infrastructure & API spend for custom session volumes.
 
+> [!NOTE]
+> For the complete comprehensive breakdown of every feature's deployment cost and the system's end-to-end latency/lag analysis, see **[COSTS_AND_LATENCY_ANALYSIS.md](file:///d:/Desktop/PARTH/Work/Project3(AI Avatar)/Avatar/COSTS_AND_LATENCY_ANALYSIS.md)**.
+
+
 ---
 
 ## ⏱️ Latency Benchmarks (Measured)

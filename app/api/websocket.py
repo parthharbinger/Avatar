@@ -25,6 +25,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from app.sessions.manager import session_manager, SessionNotFoundError
 from app.sessions.models import SessionState
 from app.orchestration.pipeline import run_speech_pipeline
+from app.services.text_sanitizer import clean_text_for_speech
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -66,10 +67,11 @@ async def avatar_stream(websocket: WebSocket, session_id: str):
             action = message.get("action", "").lower()
 
             if action == "speak":
-                text = message.get("text", "").strip()
+                raw_text = message.get("text", "").strip()
+                text = clean_text_for_speech(raw_text)
                 voice = message.get("voice")
                 if not text:
-                    await websocket.send_json({"type": "error", "message": "text field is required for speak action."})
+                    await websocket.send_json({"type": "error", "message": "Valid text is required for speak action."})
                     continue
 
                 # Cancel any currently running speech task (barge-in)

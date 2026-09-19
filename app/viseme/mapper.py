@@ -18,27 +18,52 @@ from app.viseme.models import VisemeEvent, VisemeShape
 # Average speaking rate: ~13 characters per second = ~77ms per character
 _MS_PER_CHAR = 77
 
-# Character / sub-phoneme → Viseme lookup table
+# Character / sub-phoneme → Viseme lookup table (15-Viseme Phonetic Standard)
 _CHAR_TO_VISEME: dict[str, VisemeShape] = {
-    # Open vowels
-    "a": VisemeShape.OPEN, "e": VisemeShape.OPEN, "i": VisemeShape.OPEN,
-    # Round vowels & approximants
-    "o": VisemeShape.ROUND, "u": VisemeShape.ROUND, "w": VisemeShape.ROUND, "q": VisemeShape.ROUND,
-    # Bilabial (lips touch / press)
-    "m": VisemeShape.BILABIAL, "b": VisemeShape.BILABIAL, "p": VisemeShape.BILABIAL,
-    # Labiodental (lower lip to upper teeth)
-    "f": VisemeShape.LABIODENTAL, "v": VisemeShape.LABIODENTAL,
-    # Dental / alveolar / fricatives
-    "l": VisemeShape.DENTAL, "n": VisemeShape.DENTAL, "t": VisemeShape.DENTAL,
-    "d": VisemeShape.DENTAL, "s": VisemeShape.DENTAL, "z": VisemeShape.DENTAL,
-    "r": VisemeShape.DENTAL, "c": VisemeShape.DENTAL, "k": VisemeShape.OPEN,
-    "g": VisemeShape.OPEN, "j": VisemeShape.DENTAL, "x": VisemeShape.DENTAL,
-    "y": VisemeShape.OPEN, "h": VisemeShape.OPEN,
+    # Open Vowels
+    "a": VisemeShape.AA,
+    "e": VisemeShape.E,
+    "i": VisemeShape.I,
+    # Rounded Vowels & Approximants
+    "o": VisemeShape.O,
+    "u": VisemeShape.U,
+    "w": VisemeShape.U,
+    "q": VisemeShape.O,
+    # Bilabials (lips together)
+    "m": VisemeShape.PP,
+    "b": VisemeShape.PP,
+    "p": VisemeShape.PP,
+    # Labiodentals (lip to teeth)
+    "f": VisemeShape.FF,
+    "v": VisemeShape.FF,
+    # Dentals / Alveolars
+    "t": VisemeShape.DD,
+    "d": VisemeShape.DD,
+    "n": VisemeShape.DD,
+    "l": VisemeShape.DD,
+    # Sibilants / Fricatives
+    "s": VisemeShape.SS,
+    "z": VisemeShape.SS,
+    "c": VisemeShape.SS,
+    "x": VisemeShape.SS,
+    # Velar (back of throat)
+    "k": VisemeShape.KK,
+    "g": VisemeShape.KK,
+    # Affricates
+    "j": VisemeShape.CH,
+    # Rhotic / Glides
+    "r": VisemeShape.RR,
+    "y": VisemeShape.I,
+    "h": VisemeShape.AA,
     # Space / punctuation → neutral
-    " ": VisemeShape.NEUTRAL, ",": VisemeShape.NEUTRAL,
-    ".": VisemeShape.NEUTRAL, "!": VisemeShape.NEUTRAL,
-    "?": VisemeShape.NEUTRAL, ";": VisemeShape.NEUTRAL,
-    ":": VisemeShape.NEUTRAL, "-": VisemeShape.NEUTRAL,
+    " ": VisemeShape.NEUTRAL,
+    ",": VisemeShape.NEUTRAL,
+    ".": VisemeShape.NEUTRAL,
+    "!": VisemeShape.NEUTRAL,
+    "?": VisemeShape.NEUTRAL,
+    ";": VisemeShape.NEUTRAL,
+    ":": VisemeShape.NEUTRAL,
+    "-": VisemeShape.NEUTRAL,
 }
 
 
@@ -57,7 +82,7 @@ def map_text_to_visemes(text: str, start_offset_ms: int = 0) -> List[VisemeEvent
     current_time = start_offset_ms
 
     for char in text.lower():
-        shape = _CHAR_TO_VISEME.get(char, VisemeShape.OPEN)
+        shape = _CHAR_TO_VISEME.get(char, VisemeShape.AA)
         # Only add event if shape differs from last (avoids redundant keyframes)
         if not events or events[-1].shape != shape:
             events.append(VisemeEvent(time_ms=current_time, shape=shape))
@@ -102,7 +127,7 @@ def from_word_boundaries(
         char_dur = duration_ms / max(1, len(clean))
         for i, char in enumerate(clean):
             t = int(word_start + (i * char_dur))
-            shape = _CHAR_TO_VISEME.get(char, VisemeShape.OPEN)
+            shape = _CHAR_TO_VISEME.get(char, VisemeShape.AA)
             if not events or events[-1].shape != shape:
                 events.append(VisemeEvent(time_ms=t, shape=shape))
 
@@ -134,7 +159,7 @@ def from_alignment_data(
     for item in alignment:
         char = item.get("character", " ").lower()
         time_ms = int(item.get("start_time", 0) * 1000) + start_offset_ms
-        shape = _CHAR_TO_VISEME.get(char, VisemeShape.OPEN)
+        shape = _CHAR_TO_VISEME.get(char, VisemeShape.AA)
         if not events or events[-1].shape != shape:
             events.append(VisemeEvent(time_ms=time_ms, shape=shape))
 

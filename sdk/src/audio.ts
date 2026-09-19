@@ -28,12 +28,16 @@ export class AudioPlayer {
     }
   }
 
+  private isBuffering = false;
+
   /** Call before the first chunk of a new speech turn arrives */
   startNewSpeech(): void {
     this.stop(); // clear any previous speech
     this.rawChunks = [];
     this.totalBytes = 0;
-    this._isPlaying = true;
+    this.speechStartContextTime = 0;
+    this._isPlaying = false;
+    this.isBuffering = true;
   }
 
   /**
@@ -41,7 +45,7 @@ export class AudioPlayer {
    * @param base64 - base64 string of raw MP3 bytes
    */
   async enqueueChunk(base64: string): Promise<void> {
-    if (!this._isPlaying) return;
+    if (!this.isBuffering) return;
 
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -56,8 +60,12 @@ export class AudioPlayer {
   /**
    * Finalize and start playing the accumulated audio seamlessly.
    */
-  async finishSpeech(): Promise<void> {
-    if (!this._isPlaying || this.totalBytes === 0) return;
+  async finishSpeech(onEnded?: () => void): Promise<void> {
+    this.isBuffering = false;
+    if (this.totalBytes === 0) {
+      if (onEnded) onEnded();
+      return;
+    }
 
     // Concatenate all chunks into a single valid MP3 ArrayBuffer
     const fullBuffer = new Uint8Array(this.totalBytes);
@@ -85,6 +93,7 @@ export class AudioPlayer {
         source.connect(this.ctx.destination);
 
         this.speechStartContextTime = this.ctx.currentTime;
+        this._isPlaying = true;
         source.start(this.speechStartContextTime);
         this.currentSource = source;
 
@@ -92,6 +101,7 @@ export class AudioPlayer {
           if (this.currentSource === source) {
             this._isPlaying = false;
             this.currentSource = null;
+            if (onEnded) onEnded();
           }
         };
         return;
@@ -110,14 +120,17 @@ export class AudioPlayer {
       }
       this.audioEl = new Audio(url);
       this.useNativeAudio = true;
+      this._isPlaying = true;
       this.audioEl.onended = () => {
         this._isPlaying = false;
         URL.revokeObjectURL(url);
+        if (onEnded) onEnded();
       };
       await this.audioEl.play();
     } catch (err) {
       console.error("[AvatarSDK] Audio playback error:", err);
       this._isPlaying = false;
+      if (onEnded) onEnded();
     }
   }
 
@@ -126,7 +139,7 @@ export class AudioPlayer {
    * Used by Renderer2D to look up the correct viseme from the timeline.
    */
   getCurrentTimeMs(): number {
-    if (!this._isPlaying) return 0;
+    if (!this._isPlaying || !this.speechStartContextTime) return 0;
     if (this.useNativeAudio && this.audioEl) {
       return this.audioEl.currentTime * 1000;
     }

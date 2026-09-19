@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.logging_config import setup_logging, get_logger
+from app.db.database import db
+from app.auth.security import hash_password
 from app.sessions.manager import session_manager
 from app.api.sessions import router as sessions_router
 from app.api.websocket import router as websocket_router
@@ -19,6 +21,10 @@ from app.api.conversation import router as conversation_router
 from app.api.heygen_video import router as heygen_video_router
 from app.api.costs import router as costs_router
 from app.api.profiles import router as profiles_router
+from app.api.auth import router as auth_router
+from app.api.users import router as users_router
+from app.api.api_keys import router as api_keys_router
+from app.api.logs import router as logs_router
 
 # Setup structured JSON logging before anything else runs
 setup_logging()
@@ -32,6 +38,30 @@ async def lifespan(app: FastAPI):
         "Starting Real-Time Avatar Backend",
         extra={"event": "startup", "environment": settings.environment},
     )
+    # Initialize Auth & User database
+    await db.init_db()
+
+    # Auto-seed default Administrator if no users exist
+    user_count = await db.count_users()
+    if user_count == 0:
+        import uuid
+        admin_id = str(uuid.uuid4())
+        hashed_pw = hash_password(settings.admin_default_password)
+        await db.create_user(
+            user_id=admin_id,
+            email=settings.admin_default_email,
+            hashed_password=hashed_pw,
+            full_name=settings.admin_default_name,
+            role="admin",
+            is_active=True,
+            allowed_engines=["canvas", "edge-tts", "d-id", "simli", "anam", "akool", "heygen"],
+            max_concurrent_sessions=50,
+        )
+        logger.info(
+            "Default admin account provisioned",
+            extra={"email": settings.admin_default_email, "role": "admin"},
+        )
+
     await session_manager.start()
 
     # Pretty-printed clickable terminal banner with all URLs
@@ -47,11 +77,15 @@ async def lifespan(app: FastAPI):
   👉 Health Check:             {host_url}/health
   👉 OpenAPI JSON Schema:      {host_url}/openapi.json
 ======================================================================
+  👑 Default Admin Account:    {settings.admin_default_email} / {settings.admin_default_password}
   🎬 Active Avatar Provider:   {settings.avatar_provider.upper()}
   🎙️ TTS Voice Engine:        {settings.edge_tts_voice} ({settings.tts_provider})
 ======================================================================
 """
-    print(banner, flush=True)
+    try:
+        print(banner, flush=True)
+    except Exception:
+        print(banner.encode("ascii", "ignore").decode("ascii"), flush=True)
 
     yield
     logger.info("Shutting down", extra={"event": "shutdown"})
@@ -60,7 +94,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Real-Time Interactive AI Avatar Platform",
-    description="Microservice for real-time interactive avatar video streaming (D-ID, Simli, Anam.ai, Akool, HeyGen) and 2D neural canvas.",
+    description="Microservice for real-time interactive avatar video streaming (D-ID, Simli, Anam.ai, Akool, HeyGen) and 2D neural canvas with Full RBAC User Management.",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -78,12 +112,16 @@ app.add_middleware(
 )
 
 # Mount routers
+app.include_router(auth_router)
+app.include_router(users_router)
+app.include_router(api_keys_router)
 app.include_router(sessions_router)
 app.include_router(websocket_router)
 app.include_router(conversation_router)
 app.include_router(heygen_video_router)
 app.include_router(costs_router)
 app.include_router(profiles_router)
+app.include_router(logs_router)
 
 # Mount demo page, assets, and SDK dist
 base_dir = os.path.dirname(os.path.dirname(__file__))

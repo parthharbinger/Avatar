@@ -104,12 +104,24 @@ async def test_estimate_costs():
     assert "edge-tts" in data["comparison_breakdown"]
 
 
+from app.config import settings
+
+
 @pytest.mark.asyncio
 async def test_profiles_crud_and_rag():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Obtain admin token
+        admin_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": settings.admin_default_email, "password": settings.admin_default_password},
+        )
+        admin_token = admin_login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {admin_token}"}
+
         # 1. Create Profile
         create_resp = await client.post(
             "/api/v1/profiles",
+            headers=headers,
             json={"name": "AI Expert Adam", "persona": "male", "system_prompt": "You are a test expert."}
         )
         assert create_resp.status_code == 201
@@ -131,14 +143,14 @@ async def test_profiles_crud_and_rag():
         # 4. Upload & Index a Document
         file_content = b"Apex Global Travel baggage policy allows one free carry-on up to 10kg."
         files = {"file": ("baggage_policy.txt", file_content, "text/plain")}
-        doc_resp = await client.post(f"/api/v1/profiles/{profile_id}/documents", files=files)
+        doc_resp = await client.post(f"/api/v1/profiles/{profile_id}/documents", headers=headers, files=files)
         assert doc_resp.status_code == 200
         doc_data = doc_resp.json()
         assert doc_data["status"] == "indexed"
         assert doc_data["profile"]["documents"][0]["filename"] == "baggage_policy.txt"
 
         # 5. Delete Profile
-        del_resp = await client.delete(f"/api/v1/profiles/{profile_id}")
+        del_resp = await client.delete(f"/api/v1/profiles/{profile_id}", headers=headers)
         assert del_resp.status_code == 204
 
 
@@ -153,4 +165,25 @@ async def test_webrtc_interrupt_endpoint():
         # Call interrupt endpoint
         interrupt_resp = await client.post(f"/api/v1/sessions/{session_id}/webrtc/interrupt?provider=edge-tts")
         assert interrupt_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_logs_endpoints():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # 1. Query logs
+        logs_resp = await client.get("/api/v1/logs?limit=10")
+        assert logs_resp.status_code == 200
+        logs_data = logs_resp.json()
+        assert "count" in logs_data
+        assert "logs" in logs_data
+        assert isinstance(logs_data["logs"], list)
+
+        # 2. Query error logs
+        err_resp = await client.get("/api/v1/logs/errors?limit=10")
+        assert err_resp.status_code == 200
+        err_data = err_resp.json()
+        assert "count" in err_data
+        assert "errors" in err_data
+        assert isinstance(err_data["errors"], list)
+
 

@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Optional, List, Any, Dict
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status, Depends
 from pydantic import BaseModel, Field
 
 from app.logging_config import get_logger
@@ -48,15 +48,21 @@ class ProfileResponse(BaseModel):
     documents: List[Dict[str, Any]]
 
 
+from app.auth.models import UserRole
+from app.auth.dependencies import get_optional_user, require_role, get_current_user
+
 # ── Endpoints ───────────────────────────────────────────────────────────────────
 
 @router.post(
     "",
     response_model=ProfileResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new avatar expert profile",
+    summary="Create a new avatar expert profile (Developer/Admin only)",
 )
-async def create_profile(body: CreateProfileRequest):
+async def create_profile(
+    body: CreateProfileRequest,
+    user: dict = Depends(require_role(UserRole.DEVELOPER)),
+):
     """
     Create a named avatar expert profile. Optionally provide a custom system prompt
     or let the system auto-generate one based on the name. Upload documents separately.
@@ -98,9 +104,12 @@ async def get_profile(profile_id: str):
 @router.delete(
     "/{profile_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a profile and all its documents",
+    summary="Delete a profile and all its documents (Developer/Admin only)",
 )
-async def delete_profile(profile_id: str):
+async def delete_profile(
+    profile_id: str,
+    user: dict = Depends(require_role(UserRole.DEVELOPER)),
+):
     """Permanently delete a profile and all its indexed documents."""
     deleted = rag_service.delete_profile(profile_id)
     if not deleted:
@@ -109,7 +118,7 @@ async def delete_profile(profile_id: str):
 
 @router.post(
     "/{profile_id}/documents",
-    summary="Upload and index a document for this profile",
+    summary="Upload and index a document for this profile (Developer/Admin only)",
     description=(
         "Upload a PDF, DOCX, TXT, or MD document. "
         "The system extracts text, chunks it, and indexes it for retrieval when users ask questions."
@@ -118,6 +127,7 @@ async def delete_profile(profile_id: str):
 async def upload_document(
     profile_id: str,
     file: UploadFile = File(...),
+    user: dict = Depends(require_role(UserRole.DEVELOPER)),
 ):
     """
     Upload and index a knowledge document for this avatar expert profile.
@@ -192,6 +202,22 @@ async def upload_document(
             tmp_path.unlink(missing_ok=True)
 
 
+@router.delete(
+    "/{profile_id}/documents/{doc_id}",
+    summary="Delete a specific document from profile (Developer/Admin only)",
+)
+async def delete_document(
+    profile_id: str,
+    doc_id: str,
+    user: dict = Depends(require_role(UserRole.DEVELOPER)),
+):
+    """Permanently delete an uploaded knowledge document and its indexed chunks from a profile."""
+    updated = rag_service.delete_document(profile_id, doc_id)
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile or document not found.")
+    return {"status": "deleted", "doc_id": doc_id, "profile": updated}
+
+
 @router.post(
     "/{profile_id}/query",
     summary="Test document context retrieval",
@@ -203,5 +229,11 @@ async def query_profile(profile_id: str, query: str):
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found.")
 
-    context = rag_service.retrieve_context(profile_id, query)
-    return {"query": query, "context": context, "has_context": bool(context)}
+    res = rag_service.retrieve_context_with_sources(profile_id, query)
+    return {
+        "query": query,
+        "context": res["context"],
+        "sources": res["sources"],
+        "has_context": bool(res["context"]),
+    }
+

@@ -2,10 +2,11 @@
 REST API routes for session lifecycle management.
 """
 import asyncio
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 
 from app.sessions.manager import session_manager, SessionLimitExceededError, SessionNotFoundError
+from app.services.text_sanitizer import clean_text_for_speech
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -175,15 +176,33 @@ class WebRTCSpeakRequest(BaseModel):
     provider_session_id: Optional[str] = None
 
 
+from app.auth.dependencies import get_optional_user
+
+
 @router.post(
     "/sessions/{session_id}/webrtc/offer",
     response_model=WebRTCOfferResponse,
-    summary="Create WebRTC Stream Offer (D-ID / HeyGen)",
+    summary="Create WebRTC Stream Offer (D-ID / HeyGen / Simli / Anam / Akool)",
 )
-async def create_webrtc_offer(session_id: str, avatar_id: Optional[str] = None, provider: Optional[str] = None):
+async def create_webrtc_offer(
+    session_id: str,
+    avatar_id: Optional[str] = None,
+    provider: Optional[str] = None,
+    current_user: Optional[dict] = Depends(get_optional_user),
+):
     """
-    Initialize WebRTC streaming session with configured provider (D-ID or HeyGen).
+    Initialize WebRTC streaming session with configured provider.
+    Verifies user engine permissions if authenticated.
     """
+    effective_provider = provider or settings.avatar_provider
+    if current_user and current_user.get("allowed_engines"):
+        allowed = [e.lower() for e in current_user["allowed_engines"]]
+        if effective_provider.lower() not in allowed and "all" not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Engine '{effective_provider}' is not permitted for your user account tier. Allowed: {allowed}",
+            )
+
     provider_adapter = get_avatar_provider(provider)
     if not provider_adapter:
         raise HTTPException(
@@ -261,10 +280,14 @@ async def webrtc_speak(session_id: str, body: WebRTCSpeakRequest, provider: Opti
     if not provider_adapter:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No WebRTC provider configured.")
 
+    cleaned_text = clean_text_for_speech(body.text)
+    if not cleaned_text:
+        return {"status": "empty_text_ignored"}
+
     try:
         await provider_adapter.speak(
             stream_id=body.stream_id,
-            text=body.text,
+            text=cleaned_text,
             voice=body.voice,
             session_id=body.provider_session_id or session_id,
         )

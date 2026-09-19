@@ -1,5 +1,5 @@
 /**
- * AvatarWidget â€” Drop-in plug-and-play AI Avatar component.
+ * AvatarWidget — Drop-in plug-and-play AI Avatar component.
  * Embeds photorealistic live video streaming avatar powered by D-ID, Simli, Anam.ai, Akool, and HeyGen with Groq LLM intelligence.
  */
 import { AvatarClient } from "./client";
@@ -24,12 +24,38 @@ export interface AvatarWidgetOptions {
   welcomeMessage?: string;
   /** Custom system prompt guiding the conversational AI persona */
   systemPrompt?: string;
-  /** Optional avatar expert profile ID â€” enables RAG document knowledge for this profile */
+  /** Optional avatar expert profile ID — enables RAG document knowledge for this profile */
   profileId?: string;
+  /** API Key for authenticated backend access (X-API-Key) */
+  apiKey?: string;
+  /** JWT Bearer token for authenticated backend access */
+  token?: string;
 }
 
 const DID_POSTER_FEMALE = "https://clips-presenters.d-id.com/v2/Alyssa_NoHands_BlackShirt_Home/Mvn6Nalx90/y0J6MTfOaZ/image.png";
 const DID_POSTER_MALE = "https://clips-presenters.d-id.com/v2/Adam/0GLJgELXjc/j0HIbyxjap/image.png";
+
+/**
+ * Utility function to strip emojis, pictographs, symbols, logos, and markdown
+ * from text to produce clean, natural speech for TTS engines.
+ */
+export function cleanSpeechText(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/^\s*#{1,6}\s*/gm, "")
+    .replace(/^\s*(?:[-*+•►▪▫]|\d+\.)\s+/gm, "")
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{25A0}-\u{25FF}\u{200D}\u{FE0E}\u{FE0F}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{F8FF}\u{2022}\u{25BA}\u{25AA}\u{25AB}™®©]+/gu, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n+/g, " ")
+    .replace(/\n/g, " ")
+    .trim();
+}
 
 export class AvatarWidget {
   private client: AvatarClient | null = null;
@@ -43,7 +69,7 @@ export class AvatarWidget {
   private isListening = false;
   private recognition: any = null;
 
-  // â”€â”€ Continuous Voice Loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Continuous Voice Loop ────────────────────────────────────────────────
   /** When true, mic auto-restarts after each turn (hands-free conversation loop) */
   private voiceLoopActive = false;
   /** Current state of the voice conversation turn-taking FSM */
@@ -52,10 +78,10 @@ export class AvatarWidget {
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   /** Accumulated interim transcript during current mic turn */
   private interimTranscript = "";
-  /** AbortController for in-flight LLM ask() fetch â€” enables barge-in cancellation */
+  /** AbortController for in-flight LLM ask() fetch — enables barge-in cancellation */
   private askAbortController: AbortController | null = null;
 
-  // â”€â”€ RAG Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── RAG Profile ──────────────────────────────────────────────────────────
   /** Currently selected expert profile ID for RAG-augmented responses */
   private activeProfileId: string | null = null;
 
@@ -66,6 +92,13 @@ export class AvatarWidget {
   private activeStreamId: string | null = null;
   private providerSessionId: string | null = null;
   private isConnecting = false;
+
+  private _getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.options.apiKey) headers["X-API-Key"] = this.options.apiKey;
+    if (this.options.token) headers["Authorization"] = `Bearer ${this.options.token}`;
+    return headers;
+  }
 
   constructor(options: AvatarWidgetOptions = {}) {
     const serverUrl = options.serverUrl || "http://localhost:8000";
@@ -80,12 +113,14 @@ export class AvatarWidget {
       engine,
       avatar: isMale ? "male" : "female",
       voice: options.voice || (isMale ? "en-US-ChristopherNeural" : "en-US-JennyNeural"),
-      title: options.title || (isMale ? "David â€” AI Concierge" : "Emma â€” AI Concierge"),
+      title: options.title || (isMale ? "David — AI Concierge" : "Emma — AI Concierge"),
       welcomeMessage: options.welcomeMessage || "Hello! How can I assist you today?",
-      systemPrompt: options.systemPrompt || "You are a helpful, friendly AI concierge. Keep answers concise (1-2 sentences).",
+      systemPrompt: options.systemPrompt || "You are a helpful, friendly AI concierge. Keep answers natural, concise (1-2 sentences), and in plain text without emojis, symbols, logos, or markdown formatting.",
       profileId: options.profileId || "",
+      apiKey: options.apiKey || "",
+      token: options.token || "",
     };
-    // Apply profile ID from options
+
     if (options.profileId) {
       this.activeProfileId = options.profileId;
     }
@@ -135,7 +170,7 @@ export class AvatarWidget {
 
     this.options.avatar = normId;
     this.options.voice = isMale ? "en-US-ChristopherNeural" : "en-US-JennyNeural";
-    this.options.title = isMale ? "David â€” AI Concierge" : "Emma â€” AI Concierge";
+    this.options.title = isMale ? "David — AI Concierge" : "Emma — AI Concierge";
 
     // Update Header Title
     const titleEl = this.rootEl.querySelector(".avatar-widget-title") as HTMLElement;
@@ -214,7 +249,7 @@ export class AvatarWidget {
       // 1. Create REST session
       const sessResp = await fetch(`${this.options.serverUrl}/api/v1/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this._getHeaders(),
         body: JSON.stringify({ avatar_id: this.options.avatar }),
       });
       if (!sessResp.ok) throw new Error("Failed to create avatar session");
@@ -224,7 +259,10 @@ export class AvatarWidget {
       // 2. Fetch WebRTC Offer from backend adapter
       const offerResp = await fetch(
         `${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/offer?avatar_id=${this.options.avatar}&provider=${provider}`,
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: this._getHeaders(),
+        }
       );
       if (!offerResp.ok) {
         const err = await offerResp.json();
@@ -235,7 +273,7 @@ export class AvatarWidget {
       this.activeStreamId = offerData.stream_id;
       this.providerSessionId = offerData.did_session_id;
 
-      // â”€â”€ Anam.ai Direct Persona Streaming Handshake â”€â”€
+      // ── Anam.ai Direct Persona Streaming Handshake ──
       if (provider === "anam") {
         const apiKey = offerData.api_key;
         const personaId = offerData.persona_id;
@@ -252,7 +290,7 @@ export class AvatarWidget {
           this.videoEl.style.display = "block";
           this.videoEl.id = this.videoEl.id || ("anam-video-" + Math.random().toString(36).substring(2, 9));
           await this.anamClient.streamToVideoElement(this.videoEl.id);
-          this._setStatus("Online âœ“ (ANAM.AI Digital Human)", "ok");
+          this._setStatus("Online ✓ (ANAM.AI Digital Human)", "ok");
         }
         return;
       }
@@ -267,7 +305,7 @@ export class AvatarWidget {
           this.videoEl.srcObject = event.streams[0];
           this.videoEl.style.display = "block";
           this.videoEl.play().catch(console.warn);
-          this._setStatus(`Online âœ“ (${provider.toUpperCase()} Stream)`, "ok");
+          this._setStatus(`Online ✓ (${provider.toUpperCase()} Stream)`, "ok");
         }
       };
 
@@ -275,7 +313,7 @@ export class AvatarWidget {
         if (event.candidate) {
           fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/ice?provider=${provider}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: this._getHeaders(),
             body: JSON.stringify({
               stream_id: this.activeStreamId,
               candidate: event.candidate,
@@ -296,6 +334,13 @@ export class AvatarWidget {
       };
 
       // 4. Set Remote Description & Create SDP Answer
+      if (!offerData.offer || !offerData.offer.type) {
+        if (offerData.session_token) {
+          this._setStatus("Connected ✓ (SIMLI Live Token)", "ok");
+          return;
+        }
+        throw new Error(`${provider.toUpperCase()} stream offer is invalid or missing.`);
+      }
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offerData.offer));
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
@@ -303,7 +348,7 @@ export class AvatarWidget {
       // 5. Submit SDP Answer to Backend
       await fetch(`${this.options.serverUrl}/api/v1/sessions/${this.activeSessionId}/webrtc/answer?provider=${provider}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this._getHeaders(),
         body: JSON.stringify({
           stream_id: this.activeStreamId,
           answer: answer,
@@ -311,7 +356,7 @@ export class AvatarWidget {
         }),
       });
 
-      this._setStatus(`${provider.toUpperCase()} Connected âœ“ Ready`, "ok");
+      this._setStatus(`${provider.toUpperCase()} Connected ✓ Ready`, "ok");
 
     } catch (err: any) {
       console.error(`[AvatarWidget] ${provider.toUpperCase()} Stream Error:`, err);
@@ -330,13 +375,15 @@ export class AvatarWidget {
     this.client = new AvatarClient({
       serverUrl: wsUrl,
       avatarId: this.options.avatar,
+      apiKey: this.options.apiKey,
+      token: this.options.token,
     });
     try {
       await this.client.connect();
       if (this.canvasSlot && !this.renderer) {
         this.client.mount(this.canvasSlot, this.options.avatar);
       }
-      this._setStatus("Online âœ“ (2D Canvas)", "ok");
+      this._setStatus("Online ✓ (2D Canvas)", "ok");
     } catch (err: any) {
       console.warn("[AvatarWidget] Canvas connect error:", err);
     }
@@ -344,6 +391,8 @@ export class AvatarWidget {
 
   /** Speak arbitrary text through live video stream */
   async speak(text: string): Promise<void> {
+    const cleanText = cleanSpeechText(text);
+    if (!cleanText) return;
     const provider = this.options.engine === "webrtc" ? "d-id" : this.options.engine;
     this._setStatus(`Speaking (${provider.toUpperCase()})...`, "speaking");
 
@@ -351,8 +400,8 @@ export class AvatarWidget {
     if (provider === "anam" && this.anamClient) {
       this._setStatus("Speaking (ANAM.AI)...", "speaking");
       try {
-        await this.anamClient.talk(text);
-        setTimeout(() => this._setStatus("Online âœ“", "ok"), 3000);
+        await this.anamClient.talk(cleanText);
+        setTimeout(() => this._setStatus("Online ✓", "ok"), 3000);
       } catch (err: any) {
         console.error("[AvatarWidget] Anam speak error:", err);
         this._setStatus("Speak error", "error");
@@ -376,7 +425,7 @@ export class AvatarWidget {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               stream_id: this.activeStreamId,
-              text: text,
+              text: cleanText,
               voice: this.options.voice,
               provider_session_id: this.providerSessionId,
             }),
@@ -393,7 +442,7 @@ export class AvatarWidget {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 stream_id: this.activeStreamId,
-                text: text,
+                text: cleanText,
                 voice: this.options.voice,
                 provider_session_id: this.providerSessionId,
               }),
@@ -401,17 +450,17 @@ export class AvatarWidget {
           );
         }
 
-        setTimeout(() => this._setStatus("Online âœ“", "ok"), 4000);
+        setTimeout(() => this._setStatus("Online ✓", "ok"), 4000);
       } catch (err: any) {
         console.error(`[AvatarWidget] ${provider.toUpperCase()} speak error:`, err);
         this._setStatus("Speak error", "error");
       }
     } else if (this.client) {
-      this.client.speak(text, { voice: this.options.voice });
+      this.client.speak(cleanText, { voice: this.options.voice });
     }
   }
 
-  /** Ask conversational AI a question â€” supports AbortController for barge-in cancellation */
+  /** Ask conversational AI a question — supports AbortController for barge-in cancellation */
   async ask(query: string, signal?: AbortSignal): Promise<string> {
     this.addMessage("user", query);
     this._setStatus("Thinking (Groq LLM)...", "speaking");
@@ -426,7 +475,6 @@ export class AvatarWidget {
           message: query,
           history: this.chatHistory,
           system_prompt: this.options.systemPrompt,
-          // Inject active profile for RAG document context
           profile_id: this.activeProfileId || undefined,
         }),
       });
@@ -452,7 +500,6 @@ export class AvatarWidget {
       return reply;
     } catch (err: any) {
       if (err.name === "AbortError") {
-        // Barge-in cancelled the request â€” don't show error
         return "";
       }
       this._setStatus("Error generating response", "error");
@@ -461,20 +508,16 @@ export class AvatarWidget {
     }
   }
 
-  /** Interrupt current speech â€” stops audio, animation, and video stream avatar speech */
+  /** Interrupt current speech — stops audio, animation, and video stream avatar speech */
   interrupt(): void {
-    // Abort in-flight LLM fetch (barge-in)
     if (this.askAbortController) {
       this.askAbortController.abort();
       this.askAbortController = null;
     }
-    // Stop canvas/WebSocket avatar
     if (this.client) this.client.interrupt();
-    // Stop Anam avatar
     if (this.anamClient) {
       try { this.anamClient.interruptPersona(); } catch (e) {}
     }
-    // Signal WebRTC provider to stop avatar speech
     if (this.activeSessionId && this.activeStreamId) {
       const provider = this.options.engine === "webrtc" ? "d-id" : this.options.engine;
       fetch(
@@ -482,7 +525,7 @@ export class AvatarWidget {
         { method: "POST" }
       ).catch(() => {});
     }
-    this._setStatus("Interrupted â€” Listening...", "speaking");
+    this._setStatus("Interrupted — Listening...", "speaking");
     this.convState = "idle";
   }
 
@@ -501,205 +544,22 @@ export class AvatarWidget {
     historyEl.scrollTop = historyEl.scrollHeight;
   }
 
-  private _setStatus(msg: string, cls: string): void {
-    const st = this.rootEl.querySelector(".avatar-widget-status") as HTMLElement;
-    if (st) {
-      st.textContent = msg;
-      st.className = `avatar-widget-status ${cls}`;
+  private _setStatus(text: string, cls = ""): void {
+    const statusEl = this.rootEl.querySelector(".avatar-widget-status") as HTMLElement;
+    if (statusEl) {
+      statusEl.textContent = text;
+      statusEl.className = `avatar-widget-status ${cls}`;
     }
   }
 
   private _renderWidgetDOM(): HTMLElement {
-    const isFloating = this.options.floating;
-    const isMale = this.options.avatar === "male" || this.options.avatar === "david";
-    const wrapper = document.createElement("div");
-    wrapper.className = `avatar-widget-root ${isFloating ? "floating-widget" : "inline-widget"}`;
+    const isMale = this.options.avatar === "male";
+    const curEngine = this.options.engine === "edge-tts" ? "canvas" : this.options.engine;
 
-    const curEngine = this.options.engine === "webrtc" ? "d-id" : this.options.engine === "edge-tts" ? "canvas" : this.options.engine;
+    const wrapper = document.createElement("div");
+    wrapper.className = `avatar-widget-root ${this.options.floating ? "floating-widget" : ""}`;
 
     wrapper.innerHTML = `
-      <style>
-        .avatar-widget-root {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Plus Jakarta Sans", sans-serif;
-          color: #f1f5f9;
-          box-sizing: border-box;
-          display: flex;
-          flex-direction: column;
-          background: rgba(15, 23, 42, 0.94);
-          backdrop-filter: blur(16px);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 20px;
-          overflow: hidden;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-          width: 100%;
-          max-width: 360px;
-        }
-        .avatar-widget-root.floating-widget {
-          position: fixed;
-          bottom: 24px;
-          right: 24px;
-          z-index: 99999;
-          width: 340px;
-        }
-        .avatar-widget-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 10px 14px;
-          background: rgba(30, 41, 59, 0.85);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          gap: 8px;
-        }
-        .avatar-widget-title {
-          font-size: 0.86rem;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .avatar-widget-title::before {
-          content: "";
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #10b981;
-          box-shadow: 0 0 8px #10b981;
-        }
-        .avatar-widget-status {
-          font-size: 0.70rem;
-          color: #94a3b8;
-        }
-        .avatar-widget-status.ok { color: #34d399; }
-        .avatar-widget-status.speaking { color: #38bdf8; font-weight: 600; }
-        .avatar-widget-status.error { color: #f87171; }
-        .avatar-widget-engine-select {
-          background: rgba(15, 23, 42, 0.85);
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          color: #38bdf8;
-          font-family: inherit;
-          font-size: 0.72rem;
-          font-weight: 600;
-          padding: 4px 8px;
-          border-radius: 8px;
-          outline: none;
-          cursor: pointer;
-        }
-        .avatar-widget-engine-select:focus {
-          border-color: #6366f1;
-        }
-        .avatar-widget-canvas-slot {
-          width: 100%;
-          height: 240px;
-          background: #090d16;
-          position: relative;
-          overflow: hidden;
-        }
-        .avatar-widget-video {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-          background: #090d16;
-        }
-        .avatar-widget-toolbar {
-          position: absolute;
-          bottom: 8px;
-          left: 50%;
-          transform: translateX(-50%);
-          display: flex;
-          gap: 6px;
-          background: rgba(15, 23, 42, 0.85);
-          backdrop-filter: blur(8px);
-          padding: 4px 8px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.15);
-          z-index: 10;
-        }
-        .avatar-persona-btn {
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          font-size: 0.75rem;
-          font-weight: 600;
-          padding: 3px 8px;
-          border-radius: 999px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .avatar-persona-btn.active {
-          background: #6366f1;
-          color: #ffffff;
-        }
-        .avatar-widget-history {
-          height: 100px;
-          overflow-y: auto;
-          padding: 10px 12px;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          background: rgba(10, 14, 26, 0.6);
-          font-size: 0.8rem;
-        }
-        .avatar-msg {
-          padding: 6px 10px;
-          border-radius: 8px;
-          line-height: 1.35;
-          max-width: 90%;
-        }
-        .avatar-msg-user {
-          align-self: flex-end;
-          background: rgba(99, 102, 241, 0.35);
-          color: #e0e7ff;
-        }
-        .avatar-msg-avatar {
-          align-self: flex-start;
-          background: rgba(255, 255, 255, 0.08);
-          color: #cbd5e1;
-        }
-        .avatar-widget-input-bar {
-          display: flex;
-          gap: 6px;
-          padding: 10px;
-          background: rgba(30, 41, 59, 0.6);
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        .avatar-widget-input {
-          flex: 1;
-          padding: 8px 12px;
-          border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(15, 23, 42, 0.7);
-          color: #f8fafc;
-          font-size: 0.85rem;
-          outline: none;
-        }
-        .avatar-widget-input:focus {
-          border-color: #6366f1;
-        }
-        .avatar-widget-btn {
-          border: none;
-          border-radius: 10px;
-          padding: 8px 12px;
-          font-weight: 600;
-          cursor: pointer;
-          font-size: 0.85rem;
-          transition: transform 0.1s, opacity 0.2s;
-        }
-        .avatar-widget-btn:active { transform: scale(0.96); }
-        .btn-widget-mic {
-          background: rgba(255,255,255,0.08);
-          color: #f1f5f9;
-        }
-        .btn-widget-mic.listening {
-          background: #ef4444;
-          animation: pulse 1s infinite;
-        }
-        .btn-widget-send {
-          background: linear-gradient(135deg, #6366f1, #4f46e5);
-          color: #fff;
-        }
-      </style>
       <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         .avatar-widget-root {
@@ -879,7 +739,6 @@ export class AvatarWidget {
           font-size: 0.79rem;
         }
         .avatar-widget-history::-webkit-scrollbar { width: 4px; }
-        .avatar-widget-history::-webkit-scrollbar-track { background: transparent; }
         .avatar-widget-history::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
         .avatar-msg {
           padding: 6px 10px;
@@ -907,7 +766,6 @@ export class AvatarWidget {
           font-size: 0.84rem;
           outline: none;
           font-family: inherit;
-          transition: border-color 0.2s;
         }
         .avatar-widget-input:focus { border-color: #6366f1; }
         .avatar-widget-btn {
@@ -917,37 +775,31 @@ export class AvatarWidget {
           font-weight: 600;
           cursor: pointer;
           font-size: 0.84rem;
-          transition: transform 0.12s, opacity 0.2s, background 0.2s;
+          transition: transform 0.12s, opacity 0.2s;
           font-family: inherit;
         }
         .avatar-widget-btn:active { transform: scale(0.95); }
         .btn-widget-mic {
           background: rgba(255,255,255,0.08);
           color: #f1f5f9;
-          position: relative;
         }
         .btn-widget-mic.voice-loop {
           background: rgba(99,102,241,0.30);
           color: #a5b4fc;
           box-shadow: 0 0 12px rgba(99,102,241,0.4);
-          animation: micGlow 1.8s ease-in-out infinite;
         }
         .btn-widget-mic.listening {
           background: rgba(239,68,68,0.30);
           color: #fca5a5;
           box-shadow: 0 0 12px rgba(239,68,68,0.4);
-          animation: micGlow 0.8s ease-in-out infinite;
-        }
-        @keyframes micGlow {
-          0%, 100% { box-shadow: 0 0 8px currentColor; }
-          50% { box-shadow: 0 0 18px currentColor; }
         }
         .btn-widget-send {
           background: linear-gradient(135deg, #6366f1, #4f46e5);
           color: #fff;
         }
         .btn-widget-send:hover { opacity: 0.9; }
-        /* â”€â”€ Profile Manager Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+        /* Profile Manager Modal */
         .profile-modal-overlay {
           position: fixed; inset: 0;
           background: rgba(0,0,0,0.72);
@@ -1003,7 +855,6 @@ export class AvatarWidget {
           outline: none;
           box-sizing: border-box;
           margin-bottom: 14px;
-          transition: border-color 0.2s;
         }
         .pm-input:focus { border-color: #6366f1; }
         .pm-select {
@@ -1060,9 +911,7 @@ export class AvatarWidget {
           transition: all 0.2s;
         }
         .pm-btn-primary { background: linear-gradient(135deg,#6366f1,#4f46e5); color:#fff; }
-        .pm-btn-primary:hover { opacity: 0.88; }
         .pm-btn-secondary { background: rgba(255,255,255,0.07); color: #94a3b8; }
-        .pm-btn-secondary:hover { background: rgba(255,255,255,0.12); }
         .pm-profiles-list { margin-bottom: 18px; }
         .pm-profile-item {
           display: flex;
@@ -1073,7 +922,6 @@ export class AvatarWidget {
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.07);
           margin-bottom: 8px;
-          transition: all 0.2s;
           cursor: pointer;
         }
         .pm-profile-item:hover { background: rgba(99,102,241,0.12); border-color: rgba(99,102,241,0.30); }
@@ -1091,9 +939,7 @@ export class AvatarWidget {
           padding: 3px 8px;
           font-size: 0.70rem;
           cursor: pointer;
-          transition: all 0.2s;
         }
-        .pm-delete-btn:hover { background: rgba(239,68,68,0.30); }
         .pm-section-title {
           font-size: 0.72rem;
           font-weight: 700;
@@ -1112,24 +958,24 @@ export class AvatarWidget {
           <span class="avatar-widget-status">Connecting...</span>
         </div>
         <div class="header-controls">
-          <button class="btn-profile-manager" title="Manage Expert Profiles">ðŸ‘¤ Profiles</button>
+          <button class="btn-profile-manager" title="Manage Expert Profiles">👤 Profiles</button>
           <select class="avatar-widget-engine-select" title="Switch Avatar Engine">
-            <option value="d-id" ${curEngine === "d-id" ? "selected" : ""}>ðŸŽ¬ D-ID</option>
-            <option value="simli" ${curEngine === "simli" ? "selected" : ""}>âš¡ Simli</option>
-            <option value="anam" ${curEngine === "anam" ? "selected" : ""}>ðŸ¤– Anam.ai</option>
-            <option value="akool" ${curEngine === "akool" ? "selected" : ""}>ðŸŽ¥ Akool</option>
-            <option value="heygen" ${curEngine === "heygen" ? "selected" : ""}>ðŸŽžï¸ HeyGen</option>
-            <option value="canvas" ${curEngine === "canvas" ? "selected" : ""}>âš¡ 2D Canvas</option>
+            <option value="d-id" ${curEngine === "d-id" ? "selected" : ""}>🎬 D-ID</option>
+            <option value="simli" ${curEngine === "simli" ? "selected" : ""}>⚡ Simli</option>
+            <option value="anam" ${curEngine === "anam" ? "selected" : ""}>🤖 Anam.ai</option>
+            <option value="akool" ${curEngine === "akool" ? "selected" : ""}>🎥 Akool</option>
+            <option value="heygen" ${curEngine === "heygen" ? "selected" : ""}>🎞️ HeyGen</option>
+            <option value="canvas" ${curEngine === "canvas" ? "selected" : ""}>⚡ 2D Canvas</option>
           </select>
         </div>
       </div>
       <div class="avatar-widget-canvas-slot">
         <video class="avatar-widget-video" autoplay playsinline></video>
         <span class="active-profile-badge"></span>
-        <span class="voice-indicator">ðŸŽ™ï¸ Listening...</span>
+        <span class="voice-indicator">🎙️ Listening...</span>
         <div class="avatar-widget-toolbar">
-          <button class="avatar-persona-btn btn-persona-female ${!isMale ? "active" : ""}">ðŸ‘© Emma</button>
-          <button class="avatar-persona-btn btn-persona-male ${isMale ? "active" : ""}">ðŸ‘¨ David</button>
+          <button class="avatar-persona-btn btn-persona-female ${!isMale ? "active" : ""}">👩 Emma</button>
+          <button class="avatar-persona-btn btn-persona-male ${isMale ? "active" : ""}">👨 David</button>
         </div>
       </div>
       <div class="avatar-widget-history">
@@ -1137,7 +983,7 @@ export class AvatarWidget {
       </div>
       <div class="avatar-widget-input-bar">
         <input class="avatar-widget-input" type="text" placeholder="Ask me anything...">
-        <button class="avatar-widget-btn btn-widget-mic" title="Click once to start hands-free voice conversation">ðŸŽ™ï¸</button>
+        <button class="avatar-widget-btn btn-widget-mic" title="Click once to start hands-free voice conversation">🎙️</button>
         <button class="avatar-widget-btn btn-widget-send">Send</button>
       </div>
     `;
@@ -1151,11 +997,10 @@ export class AvatarWidget {
 
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     this.recognition = new SpeechRec();
-    this.recognition.continuous = true;    // Don't auto-stop â€” we manage turns ourselves
-    this.recognition.interimResults = true; // Get partial results for barge-in detection
+    this.recognition.continuous = true;
+    this.recognition.interimResults = true;
     this.recognition.lang = "en-US";
 
-    // â”€â”€ Result Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     this.recognition.onresult = (e: any) => {
       let finalTranscript = "";
       let interimTranscript = "";
@@ -1169,14 +1014,12 @@ export class AvatarWidget {
         }
       }
 
-      // Show live interim text in input
       const input = this.rootEl.querySelector(".avatar-widget-input") as HTMLInputElement;
       if (input && (finalTranscript || interimTranscript)) {
         input.value = finalTranscript || interimTranscript;
       }
 
-      // â”€â”€ Barge-In Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      // If avatar is speaking or processing and we detect user speech, interrupt immediately
+      // Barge-In Detection
       if ((this.convState === "speaking" || this.convState === "processing") &&
           (interimTranscript.trim().length > 3 || finalTranscript.trim().length > 0)) {
         this.interrupt();
@@ -1184,9 +1027,8 @@ export class AvatarWidget {
         this._updateVoiceUI();
       }
 
-      // â”€â”€ Final Transcript: Submit Query â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Final Transcript Submission
       if (finalTranscript.trim()) {
-        // Clear any pending silence timer
         if (this.silenceTimer) {
           clearTimeout(this.silenceTimer);
           this.silenceTimer = null;
@@ -1195,7 +1037,6 @@ export class AvatarWidget {
         const query = finalTranscript.trim();
         if (input) input.value = "";
 
-        // Cancel previous LLM request if still in-flight
         if (this.askAbortController) {
           this.askAbortController.abort();
         }
@@ -1210,24 +1051,20 @@ export class AvatarWidget {
       }
     };
 
-    // â”€â”€ Speech End Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     this.recognition.onspeechend = () => {
-      // Give a brief moment for final result to arrive before stopping
       this.silenceTimer = setTimeout(() => {
-        if (this.recognition && this.isListening) {
+        if (this.recognition && this.isListening && !this.voiceLoopActive) {
           try { this.recognition.stop(); } catch { /* ignore */ }
         }
       }, 600);
     };
 
-    // â”€â”€ End Handler: Auto-Restart in Voice Loop Mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     this.recognition.onend = () => {
       this.isListening = false;
       if (this.silenceTimer) {
         clearTimeout(this.silenceTimer);
         this.silenceTimer = null;
       }
-      // If voice loop is still active and we're not processing/speaking, restart
       if (this.voiceLoopActive && this.convState === "listening") {
         this._restartListening();
       } else if (!this.voiceLoopActive) {
@@ -1237,30 +1074,29 @@ export class AvatarWidget {
 
     this.recognition.onerror = (e: any) => {
       console.warn("[AvatarWidget] Speech recognition error:", e.error);
-      if (e.error === "no-speech" || e.error === "aborted") return; // Non-fatal
+      if (e.error === "no-speech" || e.error === "aborted") return;
       this.isListening = false;
-      // Auto-restart on network errors during voice loop
       if (this.voiceLoopActive) {
         setTimeout(() => this._restartListening(), 800);
       }
     };
   }
 
-  /** Restart speech recognition for the next voice loop turn */
+  /** Restart speech recognition for next turn */
   private _restartListening(): void {
     if (!this.recognition || !this.voiceLoopActive) return;
     this.convState = "listening";
     this._updateVoiceUI();
     try {
       this.recognition.stop();
-    } catch { /* ignore if already stopped */ }
+    } catch { /* ignore */ }
     setTimeout(() => {
       if (!this.voiceLoopActive || !this.recognition) return;
       try {
         this.recognition.start();
         this.isListening = true;
         this._setStatus("Listening... (speak anytime)", "speaking");
-      } catch { /* browser may throw if already running */ }
+      } catch { /* ignore */ }
     }, 250);
   }
 
@@ -1272,7 +1108,7 @@ export class AvatarWidget {
 
     if (!active || (!this.voiceLoopActive && !this.isListening)) {
       micBtn.classList.remove("listening", "voice-loop");
-      micBtn.textContent = "ðŸŽ™ï¸";
+      micBtn.textContent = "🎙️";
       micBtn.title = "Click once to start hands-free voice conversation";
       if (voiceIndicator) voiceIndicator.classList.remove("visible");
       return;
@@ -1282,25 +1118,25 @@ export class AvatarWidget {
       if (this.convState === "listening") {
         micBtn.classList.add("listening");
         micBtn.classList.remove("voice-loop");
-        micBtn.textContent = "ðŸ”´";
-        if (voiceIndicator) { voiceIndicator.textContent = "ðŸŽ™ï¸ Listening..."; voiceIndicator.classList.add("visible"); }
+        micBtn.textContent = "🔴";
+        if (voiceIndicator) { voiceIndicator.textContent = "🎙️ Listening..."; voiceIndicator.classList.add("visible"); }
       } else if (this.convState === "processing") {
         micBtn.classList.remove("listening");
         micBtn.classList.add("voice-loop");
-        micBtn.textContent = "ðŸŸ¡";
-        if (voiceIndicator) { voiceIndicator.textContent = "ðŸ¤” Thinking..."; voiceIndicator.classList.add("visible"); }
+        micBtn.textContent = "🟡";
+        if (voiceIndicator) { voiceIndicator.textContent = "🤔 Thinking..."; voiceIndicator.classList.add("visible"); }
       } else if (this.convState === "speaking") {
         micBtn.classList.remove("listening");
         micBtn.classList.add("voice-loop");
-        micBtn.textContent = "ðŸ’¬";
-        if (voiceIndicator) { voiceIndicator.textContent = "ðŸ’¬ Speaking..."; voiceIndicator.classList.add("visible"); }
+        micBtn.textContent = "🗣️";
+        if (voiceIndicator) { voiceIndicator.textContent = "🗣️ Speaking..."; voiceIndicator.classList.add("visible"); }
       } else {
         micBtn.classList.remove("listening");
         micBtn.classList.add("voice-loop");
-        micBtn.textContent = "ðŸŽ™ï¸";
+        micBtn.textContent = "🎙️";
         if (voiceIndicator) voiceIndicator.classList.remove("visible");
       }
-      micBtn.title = "Hands-Free Voice Active â€” click to stop";
+      micBtn.title = "Hands-Free Voice Active — click to stop";
     }
   }
 
@@ -1332,7 +1168,7 @@ export class AvatarWidget {
     // Engine select
     if (engineSelect) engineSelect.onchange = () => this.setEngine(engineSelect.value as any);
 
-    // â”€â”€ Microphone: Toggle Hands-Free Voice Loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Microphone: Toggle Hands-Free Voice Loop
     micBtn.onclick = () => {
       if (!this.recognition) {
         alert("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
@@ -1340,7 +1176,6 @@ export class AvatarWidget {
       }
 
       if (this.voiceLoopActive) {
-        // Deactivate voice loop
         this.voiceLoopActive = false;
         this.convState = "idle";
         try { this.recognition.stop(); } catch { /* ignore */ }
@@ -1348,27 +1183,24 @@ export class AvatarWidget {
         this._updateVoiceUI(false);
         this._setStatus("Voice mode off", "ok");
       } else {
-        // Activate voice loop â€” start listening immediately
         this.voiceLoopActive = true;
         this.convState = "listening";
         try {
           this.recognition.start();
           this.isListening = true;
-        } catch {
-          // Already started â€” safe to ignore
-        }
+        } catch { /* ignore */ }
         this._updateVoiceUI();
-        this._setStatus("ðŸŽ™ï¸ Hands-free voice active â€” speak anytime to interrupt", "speaking");
+        this._setStatus("🎙️ Hands-free voice active — speak anytime to interrupt", "speaking");
       }
     };
 
-    // â”€â”€ Profile Manager Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Profile Manager Button
     if (btnProfileMgr) {
       btnProfileMgr.onclick = () => this._openProfileModal();
     }
   }
 
-  // â”€â”€ Profile Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Profile Management ───────────────────────────────────────────────────
 
   /** Set the active expert profile for RAG-augmented responses */
   setProfile(profileId: string | null, displayName?: string): void {
@@ -1376,7 +1208,7 @@ export class AvatarWidget {
     const badge = this.rootEl.querySelector(".active-profile-badge") as HTMLElement;
     if (badge) {
       if (profileId && displayName) {
-        badge.textContent = `ðŸ“„ ${displayName}`;
+        badge.textContent = `📄 ${displayName}`;
         badge.classList.add("visible");
       } else {
         badge.classList.remove("visible");
@@ -1390,7 +1222,7 @@ export class AvatarWidget {
     overlay.className = "profile-modal-overlay";
     overlay.innerHTML = `
       <div class="profile-modal">
-        <h3>ðŸ‘¤ Avatar Expert Profiles</h3>
+        <h3>👤 Avatar Expert Profiles</h3>
         <p class="subtitle">Create a named AI expert with document knowledge (PDF, DOCX, TXT, MD)</p>
 
         <div class="pm-section-title">Saved Profiles</div>
@@ -1404,34 +1236,32 @@ export class AvatarWidget {
 
         <label class="pm-label">Avatar Persona</label>
         <select class="pm-select" id="pm-persona">
-          <option value="female">ðŸ‘© Emma â€” Female (Default)</option>
-          <option value="male">ðŸ‘¨ David â€” Male</option>
+          <option value="female">👩 Emma — Female (Default)</option>
+          <option value="male">👨 David — Male</option>
         </select>
 
-        <label class="pm-label">Knowledge Document <span style="color:#475569">(optional â€” upload PDF / DOCX / TXT / MD)</span></label>
+        <label class="pm-label">Knowledge Document <span style="color:#475569">(optional — upload PDF / DOCX / TXT / MD)</span></label>
         <div class="pm-file-drop" id="pm-file-drop">
-          <div class="drop-icon">ðŸ“‚</div>
+          <div class="drop-icon">📁</div>
           <div class="drop-text">Click to choose or drag & drop a file</div>
-          <div class="drop-formats">Supported: PDF, DOCX, TXT, MD â€¢ Max 20 MB</div>
+          <div class="drop-formats">Supported: PDF, DOCX, TXT, MD • Max 20 MB</div>
           <input type="file" id="pm-file-input" accept=".pdf,.docx,.txt,.md" style="display:none">
         </div>
         <div class="pm-file-name" id="pm-file-name"></div>
 
         <div class="pm-status" id="pm-status"></div>
         <div class="pm-btn-row">
-          <button class="pm-btn pm-btn-primary" id="pm-create-btn">âœ¨ Create Expert Profile</button>
+          <button class="pm-btn pm-btn-primary" id="pm-create-btn">✨ Create Expert Profile</button>
           <button class="pm-btn pm-btn-secondary" id="pm-close-btn">Close</button>
         </div>
       </div>
     `;
     document.body.appendChild(overlay);
 
-    // Close on overlay click
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
     const closeBtn = overlay.querySelector("#pm-close-btn") as HTMLButtonElement;
     closeBtn.onclick = () => overlay.remove();
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 
-    // File input setup
     let selectedFile: File | null = null;
     const fileDrop = overlay.querySelector("#pm-file-drop") as HTMLElement;
     const fileInput = overlay.querySelector("#pm-file-input") as HTMLInputElement;
@@ -1444,14 +1274,13 @@ export class AvatarWidget {
       e.preventDefault();
       fileDrop.classList.remove("dragover");
       const f = e.dataTransfer?.files[0];
-      if (f) { selectedFile = f; fileNameEl.textContent = `ðŸ“„ ${f.name}`; fileNameEl.classList.add("visible"); }
+      if (f) { selectedFile = f; fileNameEl.textContent = `📄 ${f.name}`; fileNameEl.classList.add("visible"); }
     };
     fileInput.onchange = () => {
       const f = fileInput.files?.[0];
-      if (f) { selectedFile = f; fileNameEl.textContent = `ðŸ“„ ${f.name}`; fileNameEl.classList.add("visible"); }
+      if (f) { selectedFile = f; fileNameEl.textContent = `📄 ${f.name}`; fileNameEl.classList.add("visible"); }
     };
 
-    // Load existing profiles
     const listEl = overlay.querySelector("#pm-profiles-list") as HTMLElement;
     const statusEl = overlay.querySelector("#pm-status") as HTMLElement;
 
@@ -1474,7 +1303,6 @@ export class AvatarWidget {
           return `<div class="pm-profile-item ${selCls}" data-pid="${p.profile_id}" data-name="${eName}"><span class="pm-profile-avatar">${ava}</span><div class="pm-profile-info"><div class="pm-profile-name">${eName}</div><div class="pm-profile-docs ${docCls}">${docTxt}</div></div><button class="pm-delete-btn" data-pid="${p.profile_id}">🗑️</button></div>`;
         }).join("");
 
-        // Select profile on click
         listEl.querySelectorAll(".pm-profile-item").forEach(item => {
           item.addEventListener("click", (e: Event) => {
             const target = e.target as HTMLElement;
@@ -1482,22 +1310,19 @@ export class AvatarWidget {
             const pid = (item as HTMLElement).dataset.pid!;
             const name = (item as HTMLElement).dataset.name!;
             this.setProfile(pid, name);
-            // Update avatar persona to match
             const selectedProfile = profiles.find((p: any) => p.profile_id === pid);
             if (selectedProfile) {
               this.setAvatar(selectedProfile.persona);
-              // Update title with profile name
               const titleEl = this.rootEl.querySelector(".avatar-widget-title") as HTMLElement;
               if (titleEl) titleEl.innerHTML = `<span class="status-dot"></span>${this._escape(selectedProfile.name)}`;
             }
-            statusEl.textContent = `âœ… Active: ${name}`;
+            statusEl.textContent = `Active: ${name}`;
             statusEl.className = "pm-status";
             listEl.querySelectorAll(".pm-profile-item").forEach(i => i.classList.remove("selected"));
             item.classList.add("selected");
           });
         });
 
-        // Delete buttons
         listEl.querySelectorAll(".pm-delete-btn").forEach(btn => {
           btn.addEventListener("click", async (e: Event) => {
             e.stopPropagation();
@@ -1514,7 +1339,6 @@ export class AvatarWidget {
     };
     await loadProfiles();
 
-    // Create profile
     const createBtn = overlay.querySelector("#pm-create-btn") as HTMLButtonElement;
     createBtn.onclick = async () => {
       const nameInput = overlay.querySelector("#pm-name") as HTMLInputElement;
@@ -1527,7 +1351,6 @@ export class AvatarWidget {
       statusEl.textContent = "";
 
       try {
-        // Step 1: Create profile
         const createResp = await fetch(`${this.options.serverUrl}/api/v1/profiles`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1536,7 +1359,6 @@ export class AvatarWidget {
         if (!createResp.ok) throw new Error("Failed to create profile");
         const profile = await createResp.json();
 
-        // Step 2: Upload document if selected
         if (selectedFile) {
           statusEl.textContent = "Indexing document...";
           const fd = new FormData();
@@ -1551,15 +1373,14 @@ export class AvatarWidget {
           }
         }
 
-        statusEl.textContent = `âœ… Profile "${name}" created!`;
+        statusEl.textContent = `Profile "${name}" created!`;
         statusEl.className = "pm-status";
         nameInput.value = "";
         fileNameEl.classList.remove("visible");
         selectedFile = null;
-        createBtn.textContent = "âœ¨ Create Expert Profile";
+        createBtn.textContent = "✨ Create Expert Profile";
         createBtn.disabled = false;
 
-        // Auto-activate the new profile
         this.setProfile(profile.profile_id, name);
         this.setAvatar(personaSelect.value);
         const titleEl = this.rootEl.querySelector(".avatar-widget-title") as HTMLElement;
@@ -1569,7 +1390,7 @@ export class AvatarWidget {
       } catch (err: any) {
         statusEl.textContent = `Error: ${err.message}`;
         statusEl.className = "pm-status error";
-        createBtn.textContent = "âœ¨ Create Expert Profile";
+        createBtn.textContent = "✨ Create Expert Profile";
         createBtn.disabled = false;
       }
     };

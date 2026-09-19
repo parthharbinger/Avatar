@@ -1,49 +1,78 @@
 /**
- * Renderer2D — renders a photorealistic AI avatar on HTML Canvas with
- * synchronized lip-sync morphing, natural eye blinking, and breathing micro-motion.
+ * Renderer2D — High-fidelity 2D Neural Canvas Renderer.
+ * Features Whole-Face 15-Viseme Photorealistic Animation with Seamless Alpha-Crossfading,
+ * anatomical eyelid curvature with natural skin blending, and breathing micro-motion.
  */
 import type { VisemeEvent, VisemeShape } from "./types";
 import type { AudioPlayer } from "./audio";
 
-export interface AvatarIdentity {
-  name: string;
-  imageSrc: string;
-  mouthYRatio: number; // Ratio from top of image where mouth is located (e.g. 0.62)
-  eyeYRatio: number;   // Ratio where eyes are located (e.g. 0.42)
-}
+// 4x4 Grid coordinates for the 15-Viseme Whole-Face Sprite Atlas
+const VISEME_GRID: Record<string, { col: number; row: number }> = {
+  neutral: { col: 0, row: 0 },
+  sil: { col: 0, row: 0 },
+  aa: { col: 1, row: 0 },   // 'Ah' - wide open jaw
+  O: { col: 2, row: 0 },    // 'Oh' - open oval circle
+  U: { col: 3, row: 0 },    // 'Oo' / 'W' - small tight circle pucker
+  E: { col: 0, row: 1 },    // 'Ee' - wide smile teeth
+  eh: { col: 1, row: 1 },   // 'Eh' - open smile
+  I: { col: 2, row: 1 },    // 'Ay' / 'Ii' - stretched teeth
+  ih: { col: 3, row: 1 },   // 'Ii' - open dental
+  SS: { col: 0, row: 2 },   // 'L' / 'S' / 'Z' - dental sibilant
+  FF: { col: 1, row: 2 },   // 'F' / 'V' - lower lip under upper teeth
+  TH: { col: 2, row: 2 },   // 'Th' - tongue touching upper teeth
+  DD: { col: 3, row: 2 },   // 'T' / 'D' / 'N' - alveolar tongue
+  PP: { col: 0, row: 3 },   // 'M' / 'B' / 'P' - bilabial closed lips
+  kk: { col: 1, row: 3 },   // 'K' / 'G' - velar
+  CH: { col: 2, row: 3 },   // 'Sh' / 'Ch' / 'Zh' - pursed lips
+  RR: { col: 3, row: 3 },   // 'R' / 'Rest' - relaxed open
+  // Legacy aliases
+  open: { col: 1, row: 0 },
+  round: { col: 2, row: 0 },
+  dental: { col: 0, row: 2 },
+  labiodental: { col: 1, row: 2 },
+  bilabial: { col: 0, row: 3 },
+};
 
 export class Renderer2D {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private rafId: number | null = null;
   private timeline: VisemeEvent[] = [];
-  private currentShape: VisemeShape = "neutral";
   
-  // Smoothing parameters
+  // 15-Viseme Whole-Face Crossfade state
+  private currViseme: string = "neutral";
+  private prevViseme: string = "neutral";
+  private blendWeight = 1.0; // 0.0 to 1.0
+  private lastFrameTime = performance.now();
+
+  // Smoothing parameters for procedural fallback
   private mouthOpen = 0;       // 0 to 1
-  private mouthWidth = 1;      // 0.6 to 1.2
+  private mouthWidth = 1;      // 0.6 to 1.3
   private mouthRoundness = 0;  // 0 to 1
   private jawDrop = 0;
 
-  // Blinking & idle animation
+  // Natural Blinking & micro-motion
   private blinkVal = 0;
+  private blinkDirection = 1;  // 1 = closing, -1 = opening
   private nextBlink = Date.now() + 2500;
+  
+  // Asset images
   private avatarImg: HTMLImageElement | null = null;
+  private visemeAtlasImg: HTMLImageElement | null = null;
   private isImgLoaded = false;
-  private mouthYRatio = 0.355;
-  private eyeYRatio = 0.255;
+  private isAtlasLoaded = false;
+  private isMale = false;
 
   constructor(container: HTMLElement, imageSrc: string = "female") {
     this.canvas = document.createElement("canvas");
     this.canvas.width = 400;
     this.canvas.height = 400;
     this.canvas.style.cssText =
-      "display:block;width:100%;height:100%;border-radius:16px;object-fit:cover;background:#0d1117;";
+      "display:block;width:100%;height:100%;border-radius:18px;object-fit:cover;background:#090d16;";
     container.appendChild(this.canvas);
 
     const ctx = this.canvas.getContext("2d");
     if (!ctx) {
-      // Headless / jsdom mock fallback
       this.ctx = {} as CanvasRenderingContext2D;
       return;
     }
@@ -56,19 +85,39 @@ export class Renderer2D {
   /** Set or change avatar portrait image (supports 'female'/'emma', 'male'/'david', or custom URL) */
   setImage(src: string = "female"): void {
     this.isImgLoaded = false;
+    this.isAtlasLoaded = false;
     let resolvedSrc = src;
+    let atlasSrc = "http://localhost:8000/assets/full_face_female_atlas.jpg";
     const lower = src.toLowerCase();
 
-    if (lower === "female" || lower === "emma" || lower === "default" || lower === "") {
+    if (lower === "ecommerce" || lower === "elena" || lower === "retail") {
+      resolvedSrc = "http://localhost:8000/assets/avatar_ecommerce.jpg";
+      atlasSrc = "http://localhost:8000/assets/full_face_female_atlas.jpg";
+      this.isMale = false;
+    } else if (lower === "healthcare" || lower === "maya" || lower === "medical" || lower === "doctor") {
+      resolvedSrc = "http://localhost:8000/assets/avatar_healthcare.jpg";
+      atlasSrc = "http://localhost:8000/assets/full_face_female_atlas.jpg";
+      this.isMale = false;
+    } else if (lower === "banking" || lower === "alexander" || lower === "finance" || lower === "bank") {
+      resolvedSrc = "http://localhost:8000/assets/avatar_banking.jpg";
+      atlasSrc = "http://localhost:8000/assets/full_face_male_atlas.jpg";
+      this.isMale = true;
+    } else if (lower === "female" || lower === "emma" || lower === "default" || lower === "") {
       resolvedSrc = "http://localhost:8000/assets/avatar_female.jpg";
-      this.mouthYRatio = 0.355;
-      this.eyeYRatio = 0.255;
+      atlasSrc = "http://localhost:8000/assets/full_face_female_atlas.jpg";
+      this.isMale = false;
     } else if (lower === "male" || lower === "david" || lower === "adam") {
       resolvedSrc = "http://localhost:8000/assets/avatar_male.jpg";
-      this.mouthYRatio = 0.345;
-      this.eyeYRatio = 0.250;
+      atlasSrc = "http://localhost:8000/assets/full_face_male_atlas.jpg";
+      this.isMale = true;
+    } else {
+      this.isMale = lower.includes("male") || lower.includes("david") || lower.includes("adam") || lower.includes("banking") || lower.includes("alexander");
+      atlasSrc = this.isMale
+        ? "http://localhost:8000/assets/full_face_male_atlas.jpg"
+        : "http://localhost:8000/assets/full_face_female_atlas.jpg";
     }
 
+    // 1. Load Base Portrait (Fallback)
     const img = new Image();
     if (resolvedSrc.startsWith("http://") || resolvedSrc.startsWith("https://")) {
       img.crossOrigin = "anonymous";
@@ -79,7 +128,6 @@ export class Renderer2D {
       this._draw();
     };
     img.onerror = () => {
-      // If server asset not reachable, try relative path
       if (resolvedSrc.includes("/assets/")) {
         const altImg = new Image();
         altImg.onload = () => {
@@ -98,6 +146,32 @@ export class Renderer2D {
       }
     };
     img.src = resolvedSrc;
+
+    // 2. Load Whole-Face 15-Viseme Sprite Atlas
+    const atlas = new Image();
+    if (atlasSrc.startsWith("http://") || atlasSrc.startsWith("https://")) {
+      atlas.crossOrigin = "anonymous";
+    }
+    atlas.onload = () => {
+      this.visemeAtlasImg = atlas;
+      this.isAtlasLoaded = true;
+    };
+    atlas.onerror = () => {
+      if (atlasSrc.includes("/assets/")) {
+        const altAtlas = new Image();
+        altAtlas.onload = () => {
+          this.visemeAtlasImg = altAtlas;
+          this.isAtlasLoaded = true;
+        };
+        altAtlas.onerror = () => {
+          this.isAtlasLoaded = false;
+        };
+        altAtlas.src = atlasSrc.replace("http://localhost:8000/", "./");
+      } else {
+        this.isAtlasLoaded = false;
+      }
+    };
+    atlas.src = atlasSrc;
   }
 
   /** Load a new viseme timeline for an upcoming speech turn */
@@ -106,12 +180,17 @@ export class Renderer2D {
   }
 
   private _startIdleLoop(): void {
-    const loop = () => {
+    const loop = (timestamp: number) => {
+      const dt = Math.min(0.1, (timestamp - this.lastFrameTime) * 0.001);
+      this.lastFrameTime = timestamp;
+
       this._updateBlink();
-      this._updateMouthPhysics(0.12);
+      this._updateCrossfade(dt);
+      this._updateMouthPhysics(0.14);
       this._draw();
       this.rafId = requestAnimationFrame(loop);
     };
+    this.lastFrameTime = performance.now();
     this.rafId = requestAnimationFrame(loop);
   }
 
@@ -119,20 +198,27 @@ export class Renderer2D {
   startAnimation(audio: AudioPlayer): void {
     if (this.rafId !== null) cancelAnimationFrame(this.rafId);
 
-    const loop = () => {
+    const loop = (timestamp: number) => {
+      const dt = Math.min(0.1, (timestamp - this.lastFrameTime) * 0.001);
+      this.lastFrameTime = timestamp;
+
       const nowMs = audio.getCurrentTimeMs();
       this._updateViseme(nowMs);
+      this._updateCrossfade(dt);
       this._updateBlink();
-      this._updateMouthPhysics(0.25);
+      this._updateMouthPhysics(0.28);
       this._draw();
       this.rafId = requestAnimationFrame(loop);
     };
+    this.lastFrameTime = performance.now();
     this.rafId = requestAnimationFrame(loop);
   }
 
-  /** Stop speech animation loop and reset mouth */
+  /** Stop speech animation loop and reset face to neutral */
   stopAnimation(): void {
-    this.currentShape = "neutral";
+    this.currViseme = "neutral";
+    this.prevViseme = "neutral";
+    this.blendWeight = 1.0;
     this.timeline = [];
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
@@ -142,21 +228,38 @@ export class Renderer2D {
 
   private _updateViseme(nowMs: number): void {
     if (this.timeline.length === 0) {
-      this.currentShape = "neutral";
+      if (this.currViseme !== "neutral") {
+        this.prevViseme = this.currViseme;
+        this.currViseme = "neutral";
+        this.blendWeight = 0.0;
+      }
       return;
     }
-    // Binary search for closest viseme keyframe
+    // Anticipate speech onset by 35ms (coarticulation pre-roll)
+    const effectiveTime = nowMs + 35;
     let lo = 0, hi = this.timeline.length - 1, best = 0;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (this.timeline[mid].t <= nowMs) {
+      if (this.timeline[mid].t <= effectiveTime) {
         best = mid;
         lo = mid + 1;
       } else {
         hi = mid - 1;
       }
     }
-    this.currentShape = this.timeline[best].v;
+    const targetShape = this.timeline[best].v || "neutral";
+    if (targetShape !== this.currViseme) {
+      this.prevViseme = this.currViseme;
+      this.currViseme = targetShape;
+      this.blendWeight = 0.0;
+    }
+  }
+
+  private _updateCrossfade(dt: number): void {
+    if (this.blendWeight < 1.0) {
+      // Smooth 40-50ms whole-face crossfade transition (speed factor ~24)
+      this.blendWeight = Math.min(1.0, this.blendWeight + dt * 24.0);
+    }
   }
 
   private _updateMouthPhysics(speed: number): void {
@@ -165,43 +268,43 @@ export class Renderer2D {
     let targetRound = 0.0;
     let targetJaw = 0.0;
 
-    switch (this.currentShape) {
-      case "open": // Ah, Eh
-        targetOpen = 0.85;
-        targetWidth = 1.1;
-        targetJaw = 4.0;
-        break;
-      case "round": // Oh, Oo
-        targetOpen = 0.65;
-        targetWidth = 0.7;
-        targetRound = 0.9;
-        targetJaw = 3.0;
-        break;
-      case "dental": // L, N, T, S
-        targetOpen = 0.35;
-        targetWidth = 1.15;
-        targetJaw = 1.5;
-        break;
-      case "labiodental": // F, V
-        targetOpen = 0.25;
-        targetWidth = 0.95;
-        targetJaw = 1.0;
-        break;
-      case "bilabial": // M, B, P
-        targetOpen = 0.05;
-        targetWidth = 1.0;
-        targetJaw = 0.5;
-        break;
+    switch (this.currViseme) {
+      case "aa":
+      case "open":
+        targetOpen = 0.88; targetWidth = 1.12; targetRound = 0.0; targetJaw = 4.0; break;
+      case "E":
+      case "eh":
+        targetOpen = 0.75; targetWidth = 1.25; targetRound = 0.0; targetJaw = 3.2; break;
+      case "O":
+      case "round":
+        targetOpen = 0.72; targetWidth = 0.74; targetRound = 0.95; targetJaw = 3.2; break;
+      case "U":
+        targetOpen = 0.45; targetWidth = 0.62; targetRound = 1.0; targetJaw = 2.0; break;
+      case "I":
+      case "ih":
+        targetOpen = 0.42; targetWidth = 1.22; targetRound = 0.0; targetJaw = 1.8; break;
+      case "SS":
+      case "DD":
+      case "TH":
+      case "dental":
+      case "kk":
+      case "nn":
+      case "RR":
+        targetOpen = 0.36; targetWidth = 1.16; targetRound = 0.0; targetJaw = 1.6; break;
+      case "CH":
+        targetOpen = 0.45; targetWidth = 0.95; targetRound = 0.6; targetJaw = 2.0; break;
+      case "FF":
+      case "labiodental":
+        targetOpen = 0.24; targetWidth = 1.04; targetRound = 0.1; targetJaw = 1.0; break;
+      case "PP":
+      case "bilabial":
+        targetOpen = 0.04; targetWidth = 0.96; targetRound = 0.0; targetJaw = 0.2; break;
+      case "sil":
       case "neutral":
       default:
-        targetOpen = 0.0;
-        targetWidth = 1.0;
-        targetRound = 0.0;
-        targetJaw = 0.0;
-        break;
+        targetOpen = 0.0; targetWidth = 1.0; targetRound = 0.0; targetJaw = 0.0; break;
     }
 
-    // Smooth spring lerp
     this.mouthOpen += (targetOpen - this.mouthOpen) * speed;
     this.mouthWidth += (targetWidth - this.mouthWidth) * speed;
     this.mouthRoundness += (targetRound - this.mouthRoundness) * speed;
@@ -211,10 +314,19 @@ export class Renderer2D {
   private _updateBlink(): void {
     const now = Date.now();
     if (now >= this.nextBlink) {
-      this.blinkVal = Math.min(1, this.blinkVal + 0.18);
-      if (this.blinkVal >= 1) {
-        this.blinkVal = 0;
-        this.nextBlink = now + 2500 + Math.random() * 3500;
+      if (this.blinkDirection === 1) {
+        this.blinkVal += 0.24;
+        if (this.blinkVal >= 1.0) {
+          this.blinkVal = 1.0;
+          this.blinkDirection = -1;
+        }
+      } else {
+        this.blinkVal -= 0.16;
+        if (this.blinkVal <= 0.0) {
+          this.blinkVal = 0.0;
+          this.blinkDirection = 1;
+          this.nextBlink = now + 2400 + Math.random() * 3600;
+        }
       }
     }
   }
@@ -228,29 +340,72 @@ export class Renderer2D {
 
     ctx.clearRect(0, 0, w, h);
 
-    // Subtle natural breathing micro-motion
-    const breathe = Math.sin(Date.now() / 1200) * 1.5;
+    // Natural breathing micro-motion
+    const now = Date.now() * 0.0018;
+    const breathe = Math.sin(now) * 1.5;
 
-    if (this.isImgLoaded && this.avatarImg) {
-      // 1. Draw High-Res Photorealistic Avatar Portrait
+    if (this.isAtlasLoaded && this.visemeAtlasImg) {
+      // ── 1. Whole-Face Viseme Stitching & Alpha-Crossfading ──
+      const atlas = this.visemeAtlasImg;
+      const tileW = atlas.width / 4;
+      const tileH = atlas.height / 4;
+
+      const prevGrid = VISEME_GRID[this.prevViseme] || VISEME_GRID.neutral;
+      const currGrid = VISEME_GRID[this.currViseme] || VISEME_GRID.neutral;
+
       ctx.save();
-      // Draw image with breathing motion
+
+      // Draw Previous Full-Face Frame (Fading Out)
+      if (this.blendWeight < 1.0) {
+        ctx.globalAlpha = Math.max(0, 1.0 - this.blendWeight);
+        const sx = prevGrid.col * tileW;
+        const sy = prevGrid.row * tileH;
+        ctx.drawImage(atlas, sx, sy, tileW, tileH, 0, breathe, w, h);
+      }
+
+      // Draw Current Target Full-Face Frame (Fading In)
+      ctx.globalAlpha = Math.min(1.0, this.blendWeight);
+      const sx = currGrid.col * tileW;
+      const sy = currGrid.row * tileH;
+      ctx.drawImage(atlas, sx, sy, tileW, tileH, 0, breathe, w, h);
+
+      ctx.restore();
+
+      // ── 2. Anatomical Eye Blinking on Full Face ──
+      const eyeL_X = this.isMale ? w * 0.395 : w * 0.405;
+      const eyeR_X = this.isMale ? w * 0.615 : w * 0.605;
+      const eyeY = (this.isMale ? h * 0.370 : h * 0.380) + breathe;
+      const eyeW = this.isMale ? 26 : 24;
+      const eyeH = this.isMale ? 14 : 13;
+
+      if (this.blinkVal > 0.02) {
+        this._drawRealisticBlink(ctx, eyeL_X, eyeY, eyeW, eyeH, this.blinkVal, this.isMale);
+        this._drawRealisticBlink(ctx, eyeR_X, eyeY, eyeW, eyeH, this.blinkVal, this.isMale);
+      }
+
+    } else if (this.isImgLoaded && this.avatarImg) {
+      // Fallback: Static Portrait + Procedural Lip-Sync
+      ctx.save();
       ctx.drawImage(this.avatarImg, 0, breathe, w, h);
       ctx.restore();
 
-      // 2. Realistic Eye Blinks (Subtle upper eyelid shading)
-      if (this.blinkVal > 0.05) {
-        this._drawRealisticBlink(ctx, w * 0.455, h * this.eyeYRatio + breathe, 18, this.blinkVal);
-        this._drawRealisticBlink(ctx, w * 0.545, h * this.eyeYRatio + breathe, 18, this.blinkVal);
+      const eyeL_X = this.isMale ? w * 0.395 : w * 0.405;
+      const eyeR_X = this.isMale ? w * 0.615 : w * 0.605;
+      const eyeY = (this.isMale ? h * 0.370 : h * 0.380) + breathe;
+      const eyeW = this.isMale ? 26 : 24;
+      const eyeH = this.isMale ? 14 : 13;
+
+      if (this.blinkVal > 0.02) {
+        this._drawRealisticBlink(ctx, eyeL_X, eyeY, eyeW, eyeH, this.blinkVal, this.isMale);
+        this._drawRealisticBlink(ctx, eyeR_X, eyeY, eyeW, eyeH, this.blinkVal, this.isMale);
       }
 
-      // 3. Realistic Dynamic Mouth Blend
-      const mouthX = cx;
-      const mouthY = h * this.mouthYRatio + breathe + this.jawDrop * 0.5;
-      this._drawRealisticMouth(ctx, mouthX, mouthY);
+      const mouthX = this.isMale ? w * 0.502 : w * 0.505;
+      const mouthY = (this.isMale ? h * 0.655 : h * 0.645) + breathe + (this.jawDrop * 0.5);
+      const baseMouthW = this.isMale ? 40 : 36;
+      this._drawRealisticMouth(ctx, mouthX, mouthY, baseMouthW, this.isMale);
 
     } else {
-      // High-quality procedural fallback
       this._drawProceduralAvatar(ctx, cx, cy + breathe);
     }
   }
@@ -259,101 +414,149 @@ export class Renderer2D {
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
-    radius: number,
-    progress: number
+    width: number,
+    height: number,
+    blinkVal: number,
+    isMale: boolean
   ): void {
     ctx.save();
+    
+    // 1. Orbital socket soft ambient shadow
+    const shadowGrad = ctx.createRadialGradient(x, y - 2, 2, x, y, width * 0.7);
+    shadowGrad.addColorStop(0, "rgba(50, 20, 15, 0.25)");
+    shadowGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = shadowGrad;
     ctx.beginPath();
-    ctx.ellipse(x, y, radius, radius * 0.65 * progress, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(180, 130, 110, 0.95)";
+    ctx.ellipse(x, y, width * 0.65, height * 0.75, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Eyelash line
+
+    // 2. Descending upper eyelid with natural curvature
+    const lidDescent = height * 1.05 * blinkVal;
     ctx.beginPath();
-    ctx.ellipse(x, y + (radius * 0.3 * progress), radius, 1.5, 0, 0, Math.PI);
-    ctx.strokeStyle = "rgba(40, 20, 15, 0.85)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.restore();
-  }
+    ctx.moveTo(x - width * 0.5, y);
+    ctx.quadraticCurveTo(x, y - height * 0.45, x + width * 0.5, y);
+    ctx.quadraticCurveTo(x, y - height * 0.45 + lidDescent, x - width * 0.5, y);
+    ctx.closePath();
 
-  private _drawRealisticMouth(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-    const openH = this.mouthOpen * 14;
-    const baseW = 28 * this.mouthWidth;
-
-    if (this.mouthOpen < 0.05) {
-      // Natural resting mouth — subtle clean lip line
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(x - baseW, y);
-      ctx.quadraticCurveTo(x, y + 2.5, x + baseW, y);
-      ctx.strokeStyle = "rgba(120, 50, 45, 0.4)";
-      ctx.lineWidth = 1.8;
-      ctx.stroke();
-      ctx.restore();
-      return;
+    // Persona-specific skin tone gradient
+    const skinGrad = ctx.createLinearGradient(x, y - height * 0.5, x, y + height * 0.5);
+    if (isMale) {
+      skinGrad.addColorStop(0, "rgba(180, 130, 105, 0.98)");
+      skinGrad.addColorStop(0.6, "rgba(195, 145, 120, 0.98)");
+      skinGrad.addColorStop(1, "rgba(155, 105, 80, 0.98)");
+    } else {
+      skinGrad.addColorStop(0, "rgba(215, 165, 145, 0.98)");
+      skinGrad.addColorStop(0.6, "rgba(228, 180, 160, 0.98)");
+      skinGrad.addColorStop(1, "rgba(185, 135, 115, 0.98)");
     }
-
-    ctx.save();
-
-    // 1. Oral cavity (depth)
-    ctx.beginPath();
-    ctx.ellipse(x, y + openH * 0.2, baseW, Math.max(1, openH), 0, 0, Math.PI * 2);
-    const cavityGrad = ctx.createRadialGradient(x, y, 2, x, y, openH + 10);
-    cavityGrad.addColorStop(0, "#4a121a");
-    cavityGrad.addColorStop(1, "#180507");
-    ctx.fillStyle = cavityGrad;
+    ctx.fillStyle = skinGrad;
     ctx.fill();
 
-    // 2. Teeth (upper & lower)
-    if (this.mouthOpen > 0.15) {
-      ctx.fillStyle = "rgba(245, 242, 238, 0.92)";
-      // Upper teeth row
+    // 3. Eyelid crease / fold line
+    ctx.beginPath();
+    ctx.moveTo(x - width * 0.42, y - height * 0.25);
+    ctx.quadraticCurveTo(x, y - height * 0.5, x + width * 0.42, y - height * 0.25);
+    ctx.strokeStyle = isMale ? "rgba(110, 65, 50, 0.4)" : "rgba(140, 85, 70, 0.35)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // 4. Curved Eyelash Fringe along the lower edge of the descending lid
+    if (blinkVal > 0.3) {
+      const lashY = y - height * 0.45 + lidDescent;
       ctx.beginPath();
-      ctx.ellipse(x, y - openH * 0.3, baseW * 0.75, Math.min(4, openH * 0.35), 0, 0, Math.PI);
-      ctx.fill();
-      // Lower teeth row (visible on wide open)
-      if (this.mouthOpen > 0.5) {
+      ctx.moveTo(x - width * 0.5, y);
+      ctx.quadraticCurveTo(x, lashY, x + width * 0.5, y);
+      ctx.strokeStyle = isMale ? "rgba(35, 20, 15, 0.85)" : "rgba(25, 12, 10, 0.95)";
+      ctx.lineWidth = isMale ? 1.8 : 2.4;
+      ctx.stroke();
+
+      if (!isMale && blinkVal > 0.7) {
         ctx.beginPath();
-        ctx.ellipse(x, y + openH * 0.6, baseW * 0.6, Math.min(3, openH * 0.25), 0, Math.PI, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(x + width * 0.4, y);
+        ctx.quadraticCurveTo(x + width * 0.55, y - 2, x + width * 0.6, y - 4);
+        ctx.stroke();
       }
     }
 
-    // 3. Tongue
-    if (this.mouthOpen > 0.3) {
+    // 5. Lower waterline glint / tear film
+    if (blinkVal > 0.8) {
       ctx.beginPath();
-      ctx.ellipse(x, y + openH * 0.55, baseW * 0.55, openH * 0.35, 0, 0, Math.PI);
-      ctx.fillStyle = "rgba(195, 80, 85, 0.85)";
+      ctx.moveTo(x - width * 0.35, y + 1.5);
+      ctx.quadraticCurveTo(x, y + 2.5, x + width * 0.35, y + 1.5);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  private _drawRealisticMouth(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    baseW: number,
+    isMale: boolean
+  ): void {
+    const openH = this.mouthOpen * 22;
+    const dynamicW = baseW * this.mouthWidth;
+    const halfW = dynamicW * 0.5;
+
+    if (this.mouthOpen < 0.03) return;
+
+    ctx.save();
+
+    const faceShadow = ctx.createRadialGradient(x, y + openH * 0.4, halfW * 0.3, x, y + openH * 0.4, halfW * 1.3);
+    faceShadow.addColorStop(0, "rgba(40, 15, 15, 0.25)");
+    faceShadow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = faceShadow;
+    ctx.beginPath();
+    ctx.ellipse(x, y + openH * 0.3, halfW * 1.1, openH * 0.8 + 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(x, y + openH * 0.35, halfW * 0.95, Math.max(2, openH * 0.65), 0, 0, Math.PI * 2);
+    const cavityGrad = ctx.createRadialGradient(x, y + openH * 0.3, 1, x, y + openH * 0.35, halfW);
+    cavityGrad.addColorStop(0, "#1a0508");
+    cavityGrad.addColorStop(0.65, "#3b0c14");
+    cavityGrad.addColorStop(1, "#5a1822");
+    ctx.fillStyle = cavityGrad;
+    ctx.fill();
+
+    if (this.mouthOpen > 0.22) {
+      const tongueLift = (1 - this.mouthRoundness) * (this.mouthOpen * 6);
+      const tongueY = y + openH * 0.45 + tongueLift * 0.3;
+      ctx.beginPath();
+      ctx.ellipse(x, tongueY, halfW * 0.62, Math.max(3, openH * 0.35), 0, 0, Math.PI);
+      const tongueGrad = ctx.createRadialGradient(x, tongueY - 2, 2, x, tongueY, halfW * 0.6);
+      tongueGrad.addColorStop(0, "#d94860");
+      tongueGrad.addColorStop(0.7, "#be123c");
+      tongueGrad.addColorStop(1, "#881337");
+      ctx.fillStyle = tongueGrad;
       ctx.fill();
     }
 
-    // 4. Upper Lip Contour
-    ctx.beginPath();
-    ctx.moveTo(x - baseW - 2, y);
-    ctx.quadraticCurveTo(x - baseW * 0.4, y - openH * 0.4 - 2, x, y - openH * 0.25);
-    ctx.quadraticCurveTo(x + baseW * 0.4, y - openH * 0.4 - 2, x + baseW + 2, y);
-    ctx.quadraticCurveTo(x, y - openH * 0.1, x - baseW - 2, y);
-    const upperLipGrad = ctx.createLinearGradient(x, y - 6, x, y);
-    upperLipGrad.addColorStop(0, "rgba(190, 85, 80, 0.85)");
-    upperLipGrad.addColorStop(1, "rgba(140, 50, 50, 0.9)");
-    ctx.fillStyle = upperLipGrad;
-    ctx.fill();
+    if (this.mouthOpen > 0.12) {
+      const teethH = Math.min(6, openH * 0.38);
+      const teethW = halfW * 0.78;
+      ctx.beginPath();
+      ctx.moveTo(x - teethW, y - 1);
+      ctx.quadraticCurveTo(x, y - teethH * 0.3, x + teethW, y - 1);
+      ctx.lineTo(x + teethW * 0.85, y + teethH);
+      ctx.quadraticCurveTo(x, y + teethH + 0.8, x - teethW * 0.85, y + teethH);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(245, 243, 240, 0.96)";
+      ctx.fill();
+    }
 
-    // 5. Lower Lip Contour
+    const upperLift = openH * 0.25;
     ctx.beginPath();
-    ctx.moveTo(x - baseW - 2, y);
-    ctx.quadraticCurveTo(x, y + openH + 5, x + baseW + 2, y);
-    ctx.quadraticCurveTo(x, y + openH * 0.8, x - baseW - 2, y);
-    const lowerLipGrad = ctx.createLinearGradient(x, y, x, y + openH + 6);
-    lowerLipGrad.addColorStop(0, "rgba(160, 60, 60, 0.9)");
-    lowerLipGrad.addColorStop(1, "rgba(210, 95, 90, 0.85)");
-    ctx.fillStyle = lowerLipGrad;
-    ctx.fill();
-
-    // 6. Subtle lip shine / highlight
-    ctx.beginPath();
-    ctx.ellipse(x, y + openH + 2, baseW * 0.35, 1.5, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
+    ctx.moveTo(x - halfW - 2, y);
+    ctx.bezierCurveTo(x - halfW * 0.45, y - upperLift - 3.5, x - halfW * 0.15, y - upperLift - 3.5, x, y - upperLift - 1.5);
+    ctx.bezierCurveTo(x + halfW * 0.15, y - upperLift - 3.5, x + halfW * 0.45, y - upperLift - 3.5, x + halfW + 2, y);
+    ctx.quadraticCurveTo(x, y - upperLift * 0.3, x - halfW - 2, y);
+    ctx.closePath();
+    ctx.fillStyle = isMale ? "rgba(145, 80, 70, 0.94)" : "rgba(175, 75, 85, 0.96)";
     ctx.fill();
 
     ctx.restore();
@@ -385,7 +588,7 @@ export class Renderer2D {
     ctx.fill();
 
     // Mouth
-    this._drawRealisticMouth(ctx, cx, cy + 45);
+    this._drawRealisticMouth(ctx, cx, cy + 45, 36, false);
   }
 
   destroy(): void {

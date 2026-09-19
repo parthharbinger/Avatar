@@ -21,13 +21,13 @@ def test_events_are_chronologically_ordered():
 def test_bilabial_for_m_b_p():
     events = map_text_to_visemes("map")
     shapes = {e.shape for e in events}
-    assert VisemeShape.BILABIAL in shapes
+    assert VisemeShape.PP in shapes
 
 
 def test_open_vowel_for_a():
     events = map_text_to_visemes("aaa")
-    # First event should be OPEN for vowel 'a'
-    assert events[0].shape == VisemeShape.OPEN
+    # First event should be AA for vowel 'a'
+    assert events[0].shape == VisemeShape.AA
 
 
 def test_empty_text_returns_neutral():

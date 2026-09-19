@@ -42,6 +42,8 @@ export class AvatarClient {
   constructor(options: AvatarClientOptions) {
     this.opts = {
       avatarId: "default",
+      apiKey: "",
+      token: "",
       reconnectDelayMs: 2000,
       maxReconnectAttempts: 5,
       ...options,
@@ -65,9 +67,17 @@ export class AvatarClient {
       .replace("wss://", "https://")
       .replace("ws://", "http://");
 
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.opts.apiKey) {
+      headers["X-API-Key"] = this.opts.apiKey;
+    }
+    if (this.opts.token) {
+      headers["Authorization"] = `Bearer ${this.opts.token}`;
+    }
+
     const resp = await fetch(`${httpBase}/api/v1/sessions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ avatar_id: this.opts.avatarId }),
     });
 
@@ -80,7 +90,10 @@ export class AvatarClient {
     this.sessionId = session_id;
 
     // 2. Open WebSocket stream
-    const wsUrl = `${this.opts.serverUrl}${ws_url}`;
+    let wsUrl = `${this.opts.serverUrl}${ws_url}`;
+    if (this.opts.apiKey) {
+      wsUrl += (wsUrl.includes("?") ? "&" : "?") + `api_key=${encodeURIComponent(this.opts.apiKey)}`;
+    }
     this.transport = new Transport(
       wsUrl,
       this.opts.reconnectDelayMs,
@@ -171,7 +184,6 @@ export class AvatarClient {
       case "viseme_timeline":
         if (msg.events && this.renderer) {
           this.renderer.loadTimeline(msg.events as VisemeEvent[]);
-          if (this.audio) this.renderer.startAnimation(this.audio);
         }
         break;
 
@@ -189,7 +201,9 @@ export class AvatarClient {
 
       case "end":
         if (this.audio) {
-          await this.audio.finishSpeech();
+          await this.audio.finishSpeech(() => {
+            this.renderer?.stopAnimation();
+          });
           if (this.renderer) {
             this.renderer.startAnimation(this.audio);
           }

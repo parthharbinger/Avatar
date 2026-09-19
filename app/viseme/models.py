@@ -8,15 +8,31 @@ from enum import Enum
 
 class VisemeShape(str, Enum):
     """
-    6 core viseme mouth shapes covering all English phonemes.
-    Map to sprite names in the frontend renderer.
+    15-Viseme phonetic standard matching Oculus / Disney / Preston Blair mapping.
     """
     NEUTRAL = "neutral"       # Resting / silence
-    OPEN = "open"             # Vowels: A, E  (ah, eh)
-    ROUND = "round"           # Vowels: O, U  (oh, oo)
-    BILABIAL = "bilabial"     # Consonants: M, B, P (lips together)
-    LABIODENTAL = "labiodental"  # Consonants: F, V
-    DENTAL = "dental"         # Consonants: L, N, T, D, S, Z
+    SIL = "sil"
+    AA = "aa"                 # Wide open: A, AH, AY
+    E = "E"                   # Wide smile teeth: E, EE, EH
+    I = "I"                   # Stretched: I, IH, Y
+    O = "O"                   # Round open: O, OW, AO
+    U = "U"                   # Tight pucker: U, UW, OO, W
+    PP = "PP"                 # Bilabial closed: P, B, M
+    FF = "FF"                 # Labiodental: F, V
+    TH = "TH"                 # Tongue between teeth: TH, DH
+    DD = "DD"                 # Alveolar: T, D, N, L
+    KK = "kk"                 # Velar: K, G, NG
+    CH = "CH"                 # Pursed/Fricative: CH, J, SH, ZH
+    SS = "SS"                 # Dental sibilant: S, Z
+    NN = "nn"                 # Nasal: N, NG
+    RR = "RR"                 # Rhotic: R, ER
+
+    # Legacy aliases for backwards compatibility
+    OPEN = "open"
+    ROUND = "round"
+    BILABIAL = "bilabial"
+    LABIODENTAL = "labiodental"
+    DENTAL = "dental"
 
 
 @dataclass

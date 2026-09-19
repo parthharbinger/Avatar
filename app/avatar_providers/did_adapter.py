@@ -26,11 +26,14 @@ class DIDAvatarProvider(BaseAvatarProvider):
         self.source_url = settings.did_source_url
 
     def _get_headers(self) -> Dict[str, str]:
-        if ":" in self.api_key:
-            auth_bytes = base64.b64encode(self.api_key.encode("utf-8")).decode("utf-8")
+        key = (self.api_key or "").strip().strip('"').strip("'")
+        if key.startswith("Basic ") or key.startswith("Bearer "):
+            auth_header = key
+        elif ":" in key:
+            auth_bytes = base64.b64encode(key.encode("utf-8")).decode("utf-8")
             auth_header = f"Basic {auth_bytes}"
         else:
-            auth_header = f"Basic {self.api_key}"
+            auth_header = f"Basic {key}"
 
         return {
             "Authorization": auth_header,
